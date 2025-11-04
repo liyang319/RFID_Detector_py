@@ -332,11 +332,11 @@ class RFIDProductionSystem:
         """切换产线运行状态 - 主要修改部分"""
         self.is_running = not self.is_running
         if self.is_running:
-            self.run_button.config(text="停止产线", bg='#f39c12')
-            self.normal_status.config(fg='#27ae60')
-            self.abnormal_status.config(fg='#bdc3c7')
-            self.error_label.config(text="运行中", fg='#27ae60')
-            self.add_message("产线开始运行")
+            # self.run_button.config(text="停止产线", bg='#f39c12')
+            # self.normal_status.config(fg='#27ae60')
+            # self.abnormal_status.config(fg='#bdc3c7')
+            # self.error_label.config(text="运行中", fg='#27ae60')
+            # self.add_message("产线开始运行")
 
             # 发送开始生产指令到RFID读写器
             if self.rfid_reader.get_connection_status():
@@ -599,26 +599,45 @@ class RFIDProductionSystem:
         if success:
             self.current_tag = tag
             # 添加到历史记录
-            self.tag_history.append(tag)
-            # 限制历史记录大小
-            if len(self.tag_history) > self.max_history_size:
-                self.tag_history.pop(0)
+            # self.tag_history.append(tag)
+            # # 限制历史记录大小
+            # if len(self.tag_history) > self.max_history_size:
+            #     self.tag_history.pop(0)
 
         return tag
 
     def update_rfid_data(self, data: bytes):
-        """根据二进制数据更新RFID数据"""
+        """根据二进制数据更新RFID数据（TID去重）"""
         print('update_rfid_data')
         # 使用RFIDTag类解析数据
         tag = self.process_rfid_data_epc_tid_user(data)
 
         if tag.success:
-            # 更新界面显示
-            display_text = self._format_tag_list_display(tag)
-            self.update_element_text(self.fetch_text, display_text, clear_first=False)
+            # 调试：打印TID值
+            print(f"解析到的TID: '{tag.tid}'")
+            print(f"历史记录中的TID数量: {len(self.tag_history)}")
+            # 检查TID是否已存在
+            tid_exists = any(existing_tag.tid == tag.tid for existing_tag in self.tag_history)
 
-            # 添加消息
-            self.add_message(f"读取到标签: {tag.product_name} (RSSI: {tag.rssi:.1f}dBm)")
+            if not tid_exists:
+                # TID不存在，添加到历史记录并更新显示
+                self.current_tag = tag
+                # 添加到历史记录
+                self.tag_history.append(tag)
+                # 限制历史记录大小
+                if len(self.tag_history) > self.max_history_size:
+                    self.tag_history.pop(0)
+
+                # 更新界面显示
+                display_text = self._format_tag_list_display(tag)
+                self.update_element_text(self.fetch_text, display_text, clear_first=False)
+
+                # 添加消息
+                self.add_message(f"读取到新标签: {tag.product_name} (TID: {tag.tid}, RSSI: {tag.rssi:.1f}dBm)")
+            else:
+                # TID已存在，只更新当前标签，不添加到历史记录和显示
+                self.current_tag = tag
+                self.add_message(f"检测到重复标签，TID: {tag.tid} 已存在")
         else:
             self.add_message(f"标签解析失败: {tag.error_message}")
 
@@ -651,7 +670,13 @@ class RFIDProductionSystem:
     def clear_display(self):
         """清空显示内容"""
         self.fetch_text.delete('1.0', tk.END)
-        self.add_message("显示内容已清空")
+        # 清空标签历史记录
+        self.tag_history.clear()
+
+        # 重置当前标签
+        self.current_tag = None
+
+        self.add_message("显示内容和标签历史已清空")
 
     def export_tag_data(self):
         """导出标签数据到文件"""

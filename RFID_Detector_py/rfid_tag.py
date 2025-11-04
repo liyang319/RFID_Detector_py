@@ -124,7 +124,13 @@ class RFIDTag:
         self.manufacturer = "未知生产企业"
         self.license_number = "未知许可证"
         self.production_date = datetime.now().strftime("%Y-%m-%d")
-        self.batch_number = f"BATCH-{self.tid[:6] if self.tid else 'UNKNOWN'}"
+
+        # 修复：只有当tid有内容时才截取前6位
+        if self.tid and len(self.tid) >= 6:
+            self.batch_number = f"BATCH-{self.tid[:6]}"
+        else:
+            self.batch_number = "BATCH-UNKNOWN"
+
         self.package_spec = "标准规格"
         self.package_method = "箱装"
         self.quantity = 1
