@@ -5,13 +5,14 @@ from datetime import datetime
 import time
 import threading
 from RFIDReader_CNNT import RFIDReader_CNNT
+from rfid_tag import RFIDTag
 from command import device_command
 
 
 class RFIDProductionSystem:
     def __init__(self, root):
         self.root = root
-        self.root.title("RFID贴标生产系统")
+        self.root.title("RFID检测系统")
         self.root.geometry("1000x800")
         self.root.configure(bg='#f0f0f0')
         self.root.resizable(True, True)
@@ -55,7 +56,7 @@ class RFIDProductionSystem:
         title_frame.pack(fill='x', padx=5, pady=5)
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(title_frame, text="RFID贴标生产系统",
+        title_label = tk.Label(title_frame, text="RFID检测系统",
                                font=("微软雅黑", 20, "bold"),
                                bg='#2c3e50', fg='white')
         title_label.pack(pady=20)
@@ -211,21 +212,21 @@ class RFIDProductionSystem:
 
         tk.Label(fetch_frame, text="取标内容:", font=("微软雅黑", 10),
                  bg='white').pack(anchor='w', pady=(0, 5))
-        self.fetch_text = tk.Text(fetch_frame, height=4, width=65, font=("微软雅黑", 10),
+        self.fetch_text = tk.Text(fetch_frame, height=4, width=120, font=("微软雅黑", 10),
                                   relief='solid', bd=1, wrap='word')
         self.fetch_text.insert("1.0", "")
         self.fetch_text.pack(fill='both', expand=True)
 
         # 贴标后内容（右侧）
-        after_frame = tk.Frame(row2_frame, bg='white')
-        after_frame.pack(side='right', fill='both', expand=False, padx=(10, 0))
-
-        tk.Label(after_frame, text="贴标后内容:", font=("微软雅黑", 10),
-                 bg='white').pack(anchor='w', pady=(0, 5))
-        self.after_text = tk.Text(after_frame, height=4, width=65, font=("微软雅黑", 10),
-                                  relief='solid', bd=1, wrap='word')
-        self.after_text.insert("1.0", "")
-        self.after_text.pack(fill='both', expand=True)
+        # after_frame = tk.Frame(row2_frame, bg='white')
+        # after_frame.pack(side='right', fill='both', expand=False, padx=(10, 0))
+        #
+        # tk.Label(after_frame, text="贴标后内容:", font=("微软雅黑", 10),
+        #          bg='white').pack(anchor='w', pady=(0, 5))
+        # self.after_text = tk.Text(after_frame, height=4, width=65, font=("微软雅黑", 10),
+        #                           relief='solid', bd=1, wrap='word')
+        # self.after_text.insert("1.0", "")
+        # self.after_text.pack(fill='both', expand=True)
 
     def create_production_stats_section(self):
         """创建生产统计区域（保持不变）"""
@@ -552,9 +553,9 @@ class RFIDProductionSystem:
             self.fetch_text.delete('1.0', tk.END)
             self.fetch_text.insert('1.0', rfid_data['fetch_content'])
 
-        if 'after_content' in rfid_data:
-            self.after_text.delete('1.0', tk.END)
-            self.after_text.insert('1.0', rfid_data['after_content'])
+        # if 'after_content' in rfid_data:
+        #     self.after_text.delete('1.0', tk.END)
+        #     self.after_text.insert('1.0', rfid_data['after_content'])
 
         if 'load_count' in rfid_data:
             self.tray_load_entry.delete(0, tk.END)
@@ -665,12 +666,12 @@ class RFIDProductionSystem:
             # 更新文本框内容
             # 解析RFID数据
             result = self.process_rfid_data_epc_tid_user(data)
-            display_text = f"EPC: {result['epc']}\nTID: {result['tid']}\nUSER: {result['user']}\nRSSI: {result['rssi']}\nPC: {result['pc']}\nant_num: {result['ant_num']}"
-            if result['ant_num'] == 1:
-                self.update_element_text(self.fetch_text, display_text)
-            elif result['ant_num'] == 2:
-                # self.update_element_text(self.after_text, f"收到数据: {data.hex()}")
-                self.update_element_text(self.after_text, display_text)
+            display_text = f"EPC: {result['epc']} TID: {result['tid']} USER: {result['user']} RSSI: {result['rssi']} ANT: {result['ant_num']}\n"
+            # if result['ant_num'] == 1:
+            self.update_element_text(self.fetch_text, display_text)
+            # elif result['ant_num'] == 2:
+            #     # self.update_element_text(self.after_text, f"收到数据: {data.hex()}")
+            #     self.update_element_text(self.after_text, display_text)
         pass
 
     def add_message(self, message):
@@ -717,7 +718,7 @@ class RFIDProductionSystem:
             return False
 
         # 处理参数
-        clear_first = kwargs.get('clear_first', True)
+        clear_first = kwargs.get('clear_first', False)
         scroll_to_end = kwargs.get('scroll_to_end', True)
         format_str = kwargs.get('format_str')
         max_length = kwargs.get('max_length')
