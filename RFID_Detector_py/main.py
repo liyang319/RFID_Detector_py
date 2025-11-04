@@ -27,7 +27,7 @@ class RFIDProductionSystem:
         # RFID标签管理
         self.current_tag = None
         self.tag_history = []
-        self.max_history_size = 1000
+        self.max_history_size = 10000
 
         # RFID读写器（替换原来的SocketClient）
         self.rfid_reader = RFIDReader_CNNT('192.168.1.200', 2000)
@@ -228,14 +228,14 @@ class RFIDProductionSystem:
 
         # 清空显示按钮
         self.clear_button = tk.Button(control_frame, text="清空显示",
-                                      font=("微软雅黑", 9), bg='#95a5a6', fg='white',
+                                      font=("微软雅黑", 9), bg='#95a5a6', fg='black',
                                       width=10, height=1,
                                       command=self.clear_display)
         self.clear_button.pack(side='right', padx=5)
 
         # 导出数据按钮
         self.export_button = tk.Button(control_frame, text="导出数据",
-                                       font=("微软雅黑", 9), bg='#3498db', fg='white',
+                                       font=("微软雅黑", 9), bg='#3498db', fg='black',
                                        width=10, height=1,
                                        command=self.export_tag_data)
         self.export_button.pack(side='right', padx=5)
@@ -614,7 +614,7 @@ class RFIDProductionSystem:
 
         if tag.success:
             # 更新界面显示
-            display_text = self._format_tag_display(tag)
+            display_text = self._format_tag_list_display(tag)
             self.update_element_text(self.fetch_text, display_text, clear_first=False)
 
             # 添加消息
@@ -639,6 +639,14 @@ class RFIDProductionSystem:
                 f"位置: {tag.longitude:.6f}°, {tag.latitude:.6f}°\n"
                 f"时间: {tag.timestamp}\n"
                 "=" * 50 + "\n")
+
+    def _format_tag_list_display(self, tag: RFIDTag) -> str:
+        """格式化标签信息用于显示"""
+        return (f"EPC: {tag.epc} "
+                f"TID: {tag.tid} "
+                f"USER: {tag.user_data} "
+                f"RSSI: {tag.rssi:.1f}dBm "
+                f"天线: {tag.antenna_num}\n")
 
     def clear_display(self):
         """清空显示内容"""
