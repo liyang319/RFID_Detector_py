@@ -24,6 +24,11 @@ class RFIDProductionSystem:
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
+        # RFID标签管理
+        self.current_tag = None
+        self.tag_history = []
+        self.max_history_size = 1000
+
         # RFID读写器（替换原来的SocketClient）
         self.rfid_reader = RFIDReader_CNNT('192.168.1.200', 2000)
         self.setup_rfid_callbacks()
@@ -217,16 +222,23 @@ class RFIDProductionSystem:
         self.fetch_text.insert("1.0", "")
         self.fetch_text.pack(fill='both', expand=True)
 
-        # 贴标后内容（右侧）
-        # after_frame = tk.Frame(row2_frame, bg='white')
-        # after_frame.pack(side='right', fill='both', expand=False, padx=(10, 0))
-        #
-        # tk.Label(after_frame, text="贴标后内容:", font=("微软雅黑", 10),
-        #          bg='white').pack(anchor='w', pady=(0, 5))
-        # self.after_text = tk.Text(after_frame, height=4, width=65, font=("微软雅黑", 10),
-        #                           relief='solid', bd=1, wrap='word')
-        # self.after_text.insert("1.0", "")
-        # self.after_text.pack(fill='both', expand=True)
+        # 控制按钮区域
+        control_frame = tk.Frame(tray_frame, bg='white')
+        control_frame.grid(row=2, column=0, columnspan=2, sticky='e', padx=10, pady=5)
+
+        # 清空显示按钮
+        self.clear_button = tk.Button(control_frame, text="清空显示",
+                                      font=("微软雅黑", 9), bg='#95a5a6', fg='white',
+                                      width=10, height=1,
+                                      command=self.clear_display)
+        self.clear_button.pack(side='right', padx=5)
+
+        # 导出数据按钮
+        self.export_button = tk.Button(control_frame, text="导出数据",
+                                       font=("微软雅黑", 9), bg='#3498db', fg='white',
+                                       width=10, height=1,
+                                       command=self.export_tag_data)
+        self.export_button.pack(side='right', padx=5)
 
     def create_production_stats_section(self):
         """创建生产统计区域（保持不变）"""
@@ -413,6 +425,7 @@ class RFIDProductionSystem:
     # RFID读写器回调函数
     def on_rfid_data_received(self, data):
         """RFID数据接收回调"""
+
         def update_ui():
             if isinstance(data, bytes):
                 # 处理二进制数据
@@ -428,6 +441,7 @@ class RFIDProductionSystem:
 
     def on_rfid_connection_changed(self, connected, message):
         """RFID连接状态回调"""
+
         def update_ui():
             if connected:
                 self.socket_status_label.config(text="● 已连接", fg='#27ae60')
@@ -448,6 +462,7 @@ class RFIDProductionSystem:
 
     def on_rfid_error(self, error_msg):
         """RFID错误回调"""
+
         def update_ui():
             self.add_message(f"RFID错误: {error_msg}")
             # 只在重要错误时显示弹窗
@@ -568,114 +583,124 @@ class RFIDProductionSystem:
         # 根据你的实际协议实现
         pass
 
-    def process_rfid_data_epc_tid_user(self, data: bytes) -> dict:
+    def process_rfid_data_epc_tid_user(self, data: bytes) -> RFIDTag:
         """
-        解析RFID数据中的PC、EPC、TID、USER、RSSI和天线号数据
+        解析RFID数据并返回RFIDTag对象
 
         Args:
             data: 接收到的完整数据包
 
         Returns:
-            dict: 包含解析结果的字典
-            {
-                'pc': '30 00',           # 字节5-6
-                'epc': 'E2 82 78 83 00 00 00 00 00 88 00 00',  # 字节8-19
-                'tid': 'E2 82 78 83 20 00 00 00 00 88 3A CC',   # 字节20-31
-                'user': '00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00',  # 字节32-47
-                'rssi': -65.7,           # 实际RSSI值（dBm）
-                'rssi_hex': 'FD6F',      # RSSI原始十六进制
-                'ant_num': 1,            # 天线号（字节50）
-                'ant_num_hex': '01',     # 天线号十六进制
-                'success': True/False,
-                'error': '错误信息'
-            }
+            RFIDTag: 包含解析结果的标签对象
         """
-        result = {
-            'pc': '',
-            'epc': '',
-            'tid': '',
-            'user': '',
-            'rssi': 0.0,
-            'rssi_hex': '',
-            'ant_num': 0,
-            'ant_num_hex': '',
-            'success': False,
-            'error': ''
-        }
+        tag = RFIDTag()
+        success = tag.from_bytes(data)
 
-        try:
-            # 检查数据长度
-            if len(data) < 51:  # 需要至少51字节（包含天线号）
-                result['error'] = f'数据长度不足，需要至少51字节，实际收到{len(data)}字节'
-                return result
+        if success:
+            self.current_tag = tag
+            # 添加到历史记录
+            self.tag_history.append(tag)
+            # 限制历史记录大小
+            if len(self.tag_history) > self.max_history_size:
+                self.tag_history.pop(0)
 
-            # 解析PC数据 (字节5-6，共2字节)
-            pc_data = data[5:7]
-            result['pc'] = ' '.join([f'{b:02X}' for b in pc_data])
-
-            # 解析EPC数据 (字节8-19，共12字节)
-            epc_data = data[7:19]
-            result['epc'] = ' '.join([f'{b:02X}' for b in epc_data])
-
-            # 解析TID数据 (字节20-31，共12字节)
-            tid_data = data[19:31]
-            result['tid'] = ' '.join([f'{b:02X}' for b in tid_data])
-
-            # 解析USER数据 (字节32-47，共16字节)
-            user_data = data[31:47]
-            result['user'] = ' '.join([f'{b:02X}' for b in user_data])
-
-            # 解析RSSI数据 (字节47-48，共2字节)
-            rssi_data = data[47:49]
-            result['rssi_hex'] = rssi_data.hex().upper()
-            result['rssi'] = self._parse_rssi(rssi_data)
-
-            # 解析天线号 (字节50，第51个字节)
-            ant_num_byte = data[49]
-            result['ant_num'] = ant_num_byte
-            result['ant_num_hex'] = f'{ant_num_byte:02X}'
-
-            result['success'] = True
-
-        except Exception as e:
-            result['error'] = f'解析RFID数据失败: {str(e)}'
-
-        return result
-
-    def _parse_rssi(self, rssi_bytes: bytes) -> float:
-        """
-        解析RSSI值（16位补码，实际值×10）
-        Args:
-            rssi_bytes: 2字节的RSSI数据
-        Returns:
-            float: 实际的RSSI值（dBm）
-        """
-        if len(rssi_bytes) < 2:
-            return 0.0
-        # 将2字节转换为有符号整数（补码）
-        rssi_int = int.from_bytes(rssi_bytes, byteorder='big', signed=True)
-        # 转换为实际值（除以10）
-        rssi_actual = rssi_int / 10.0
-        return rssi_actual
+        return tag
 
     def update_rfid_data(self, data: bytes):
         """根据二进制数据更新RFID数据"""
         print('update_rfid_data')
-        # 根据你的实际协议实现
-        if len(data) >= 53:
-            # 更新文本框内容
-            # 解析RFID数据
-            result = self.process_rfid_data_epc_tid_user(data)
-            display_text = f"EPC: {result['epc']} TID: {result['tid']} USER: {result['user']} RSSI: {result['rssi']} ANT: {result['ant_num']}\n"
-            # if result['ant_num'] == 1:
-            self.update_element_text(self.fetch_text, display_text)
-            # elif result['ant_num'] == 2:
-            #     # self.update_element_text(self.after_text, f"收到数据: {data.hex()}")
-            #     self.update_element_text(self.after_text, display_text)
-        pass
+        # 使用RFIDTag类解析数据
+        tag = self.process_rfid_data_epc_tid_user(data)
+
+        if tag.success:
+            # 更新界面显示
+            display_text = self._format_tag_display(tag)
+            self.update_element_text(self.fetch_text, display_text, clear_first=False)
+
+            # 添加消息
+            self.add_message(f"读取到标签: {tag.product_name} (RSSI: {tag.rssi:.1f}dBm)")
+        else:
+            self.add_message(f"标签解析失败: {tag.error_message}")
+
+    def _format_tag_display(self, tag: RFIDTag) -> str:
+        """格式化标签信息用于显示"""
+        return (f"EPC: {tag.epc}\n"
+                f"TID: {tag.tid}\n"
+                f"USER: {tag.user_data}\n"
+                f"RSSI: {tag.rssi:.1f} dBm\n"
+                f"天线: {tag.antenna_num}\n"
+                f"产品: {tag.product_name}\n"
+                f"生产企业: {tag.manufacturer}\n"
+                f"许可证: {tag.license_number}\n"
+                f"生产日期: {tag.production_date}\n"
+                f"批号: {tag.batch_number}\n"
+                f"包装: {tag.package_spec} {tag.package_method}\n"
+                f"数量: {tag.quantity}\n"
+                f"位置: {tag.longitude:.6f}°, {tag.latitude:.6f}°\n"
+                f"时间: {tag.timestamp}\n"
+                "=" * 50 + "\n")
+
+    def clear_display(self):
+        """清空显示内容"""
+        self.fetch_text.delete('1.0', tk.END)
+        self.add_message("显示内容已清空")
+
+    def export_tag_data(self):
+        """导出标签数据到文件"""
+        if not self.tag_history:
+            messagebox.showinfo("导出数据", "没有可导出的标签数据")
+            return
+
+        try:
+            filename = f"rfid_tags_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            self.export_tags_to_csv(filename)
+            messagebox.showinfo("导出成功", f"数据已导出到: {filename}")
+        except Exception as e:
+            messagebox.showerror("导出失败", f"导出数据时出错: {str(e)}")
+
+    def export_tags_to_csv(self, filename: str):
+        """导出标签历史到CSV文件"""
+        import csv
+
+        try:
+            with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                fieldnames = ['timestamp', 'epc', 'tid', 'user_data', 'rssi', 'antenna_num',
+                              'product_name', 'manufacturer', 'license_number', 'production_date',
+                              'batch_number', 'package_spec', 'package_method', 'quantity',
+                              'longitude', 'latitude']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+                writer.writeheader()
+                for tag in self.tag_history:
+                    if tag.success:
+                        writer.writerow({
+                            'timestamp': tag.timestamp,
+                            'epc': tag.epc,
+                            'tid': tag.tid,
+                            'user_data': tag.user_data,
+                            'rssi': tag.rssi,
+                            'antenna_num': tag.antenna_num,
+                            'product_name': tag.product_name,
+                            'manufacturer': tag.manufacturer,
+                            'license_number': tag.license_number,
+                            'production_date': tag.production_date,
+                            'batch_number': tag.batch_number,
+                            'package_spec': tag.package_spec,
+                            'package_method': tag.package_method,
+                            'quantity': tag.quantity,
+                            'longitude': tag.longitude,
+                            'latitude': tag.latitude
+                        })
+
+            self.add_message(f"标签数据已导出到: {filename}")
+
+        except Exception as e:
+            self.add_message(f"导出失败: {e}")
+            raise
 
     def add_message(self, message):
         """添加消息到消息框"""
+
         def _add_message():
             self.message_text.config(state='normal')
             timestamp = datetime.now().strftime("%H:%M:%S")
