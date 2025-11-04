@@ -628,6 +628,14 @@ class RFIDProductionSystem:
                 if len(self.tag_history) > self.max_history_size:
                     self.tag_history.pop(0)
 
+                # 更新当前装载数量
+                self.current_load = len(self.tag_history)
+                self.current_load_label.config(text=str(self.current_load))
+
+                # 更新今日生产总量
+                self.daily_production += 1
+                self.daily_label.config(text=str(self.daily_production))
+
                 # 更新界面显示
                 display_text = self._format_tag_list_display(tag)
                 self.update_element_text(self.fetch_text, display_text, clear_first=False)
@@ -675,6 +683,9 @@ class RFIDProductionSystem:
 
         # 重置当前标签
         self.current_tag = None
+
+        self.current_load = len(self.tag_history)
+        self.current_load_label.config(text=str(self.current_load))
 
         self.add_message("显示内容和标签历史已清空")
 
