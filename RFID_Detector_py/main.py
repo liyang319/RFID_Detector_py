@@ -7,6 +7,7 @@ import threading
 from RFIDReader_CNNT import RFIDReader_CNNT
 from rfid_tag import RFIDTag
 from command import device_command
+from mqtt_client import MqttClient
 
 
 class RFIDProductionSystem:
@@ -19,8 +20,8 @@ class RFIDProductionSystem:
 
         # 系统状态变量
         self.is_running = False
-        self.current_load = 20
-        self.daily_production = 199999
+        self.current_load = 0
+        self.daily_production = 0
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
@@ -32,6 +33,16 @@ class RFIDProductionSystem:
         # RFID读写器（替换原来的SocketClient）
         self.rfid_reader = RFIDReader_CNNT('192.168.1.200', 2000)
         self.setup_rfid_callbacks()
+
+        # MQTT客户端（新增）
+        self.mqtt_client = MqttClient(
+            broker='192.168.1.100',  # 根据实际情况修改
+            port=1883,
+            username='None',  # 根据实际情况修改
+            password='None',  # 根据实际情况修改
+            client_id='RFID_DETECTOR_SYSTEM'
+        )
+        self.setup_mqtt_callbacks()
 
         # 创建界面（保持原有UI不变）
         self.create_title_section()
@@ -385,17 +396,25 @@ class RFIDProductionSystem:
 
     # RFID读写器相关方法
     def auto_connect(self):
-        """自动连接RFID读写器"""
-        self.add_message("系统启动，准备连接RFID读写器...")
+        """自动连接RFID读写器和MQTT客户端（分别启动）"""
+        self.add_message("系统启动，准备连接RFID读写器和MQTT客户端...")
 
-        def connect_thread():
+        def connect_rfid_thread():
+            """RFID读写器连接线程"""
             time.sleep(2)  # 延迟2秒连接，让界面先加载完成
             if self.rfid_reader.connect():
                 self.add_message("自动连接RFID读写器成功")
             else:
-                self.add_message("自动连接失败，请手动连接")
+                self.add_message("自动连接RFID读写器失败，请手动连接")
 
-        threading.Thread(target=connect_thread, daemon=True).start()
+        def connect_mqtt_thread():
+            """MQTT客户端连接线程"""
+            time.sleep(3)  # 延迟3秒连接，避免同时启动造成资源竞争
+            self.start_mqtt_client()
+
+        # 分别启动两个线程
+        threading.Thread(target=connect_rfid_thread, daemon=True).start()
+        threading.Thread(target=connect_mqtt_thread, daemon=True).start()
 
     def connect_rfid(self):
         """连接RFID读写器"""
@@ -763,6 +782,13 @@ class RFIDProductionSystem:
         """程序关闭时的清理工作"""
         if hasattr(self, 'rfid_reader'):
             self.rfid_reader.disconnect()
+        # 断开MQTT连接
+        if hasattr(self, 'mqtt_client'):
+            try:
+                self.mqtt_client.disconnect()
+                self.add_message("MQTT客户端已断开")
+            except:
+                pass
         self.root.destroy()
 
     def update_element_text(self, element, text: str, **kwargs) -> bool:
@@ -846,6 +872,77 @@ class RFIDProductionSystem:
 
         self.root.after(0, _update)
         return True
+
+    def setup_mqtt_callbacks(self):
+        """设置完整的MQTT回调函数"""
+        # 需要在文件顶部添加导入：import paho.mqtt.client as mqtt
+        self.mqtt_client.client.on_connect = self._on_mqtt_connect
+        self.mqtt_client.client.on_disconnect = self._on_mqtt_disconnect
+        self.mqtt_client.client.on_message = self._on_mqtt_message
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        """MQTT连接回调"""
+        def update_ui():
+            if rc == 0:
+                self.add_message("MQTT连接成功")
+                # 连接成功后订阅主题
+                try:
+                    client.subscribe(self.mqtt_client.data_topic)
+                    client.subscribe(self.mqtt_client.response_topic)
+                    self.add_message(f"已订阅主题: {self.mqtt_client.data_topic}, {self.mqtt_client.response_topic}")
+                except Exception as e:
+                    self.add_message(f"订阅主题失败: {e}")
+            else:
+                self.add_message(f"MQTT连接失败，返回码: {rc}")
+
+        self.root.after(0, update_ui)
+
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        """MQTT断开连接回调"""
+
+        def update_ui():
+            self.add_message("MQTT连接已断开")
+
+        self.root.after(0, update_ui)
+
+    def _on_mqtt_message(self, client, userdata, msg):
+        """MQTT消息接收回调（直接在回调中处理）"""
+
+        def process_message():
+            try:
+                message = msg.payload.decode('utf-8')
+                self.add_message(f"收到MQTT消息: 主题={msg.topic}, 内容={message}")
+
+                # 根据主题类型处理消息
+                # if msg.topic == self.mqtt_client.data_topic:
+                #     self.handle_mqtt_data_message(message)
+                # elif msg.topic == self.mqtt_client.response_topic:
+                #     self.handle_mqtt_response_message(message)
+                # elif msg.topic == self.mqtt_client.command_topic:
+                #     self.handle_mqtt_command_message(message)
+                # else:
+                #     self.add_message(f"未知MQTT主题: {msg.topic}")
+
+            except Exception as e:
+                self.add_message(f"处理MQTT消息出错: {e}")
+
+        # 在UI线程中安全处理
+        self.root.after(0, process_message)
+
+    def start_mqtt_client(self):
+        """启动MQTT客户端连接"""
+
+        def connect_thread():
+            try:
+                self.mqtt_client.connect()
+                # 订阅必要的主题
+                self.mqtt_client.subscribe(self.mqtt_client.data_topic)
+                self.mqtt_client.subscribe(self.mqtt_client.response_topic)
+                self.add_message("MQTT客户端启动成功")
+            except Exception as e:
+                self.add_message(f"MQTT客户端启动失败: {e}")
+
+        threading.Thread(target=connect_thread, daemon=True).start()
 
 
 def main():
