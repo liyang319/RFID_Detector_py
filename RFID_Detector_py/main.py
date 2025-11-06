@@ -959,7 +959,7 @@ class RFIDProductionSystem:
         try:
             command_data = {
                 "cmd": command_type,
-                "number": len(data)
+                "number": len(self.tag_history)
             }
             if data:
                 command_data.update(data)
