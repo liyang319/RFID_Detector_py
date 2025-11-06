@@ -8,6 +8,7 @@ from RFIDReader_CNNT import RFIDReader_CNNT
 from rfid_tag import RFIDTag
 from command import device_command
 from mqtt_client import MqttClient
+import json
 
 
 class RFIDProductionSystem:
@@ -387,6 +388,7 @@ class RFIDProductionSystem:
         if self.rfid_reader.get_connection_status():
             if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
                 self.add_message("发送紧急停止指令成功")
+                self.report_rfid_tags_via_mqtt()
             else:
                 self.add_message("发送紧急停止指令失败")
         else:
@@ -887,8 +889,9 @@ class RFIDProductionSystem:
                 self.add_message("MQTT连接成功")
                 # 连接成功后订阅主题
                 try:
-                    client.subscribe(self.mqtt_client.data_topic)
-                    client.subscribe(self.mqtt_client.response_topic)
+                    self.mqtt_client.connected = True
+                    self.mqtt_client.subscribe(self.mqtt_client.data_topic)
+                    self.mqtt_client.subscribe(self.mqtt_client.response_topic)
                     self.add_message(f"已订阅主题: {self.mqtt_client.data_topic}, {self.mqtt_client.response_topic}")
                 except Exception as e:
                     self.add_message(f"订阅主题失败: {e}")
@@ -943,6 +946,57 @@ class RFIDProductionSystem:
                 self.add_message(f"MQTT客户端启动失败: {e}")
 
         threading.Thread(target=connect_thread, daemon=True).start()
+
+    def send_mqtt_command(self, command_type, data=None):
+        """发送MQTT命令"""
+        print('send_mqtt_command')
+        print(f"mqtt_client: {hasattr(self, 'mqtt_client')}")
+        print(f"connected: {self.mqtt_client.connected}")
+        if not hasattr(self, 'mqtt_client') or not self.mqtt_client.connected:
+            self.add_message("MQTT客户端未连接，无法发送命令")
+            return False
+
+        try:
+            command_data = {
+                "cmd": command_type,
+                "number": len(data)
+            }
+            if data:
+                command_data.update(data)
+
+            message = json.dumps([command_data])
+            self.mqtt_client.publish(self.mqtt_client.command_topic, message)
+            self.add_message(f"发送MQTT命令: {command_type}")
+            return True
+        except Exception as e:
+            self.add_message(f"发送MQTT命令失败: {e}")
+            return False
+
+    def report_rfid_tags_via_mqtt(self):
+        """通过MQTT报告RFID标签"""
+        print('report_rfid_tags_via_mqtt')
+        print(f"当前列表长度: {len(self.tag_history)}")
+        if self.tag_history:
+            # 可以发送最近的标签信息
+            recent_tags = self.tag_history[-10:]  # 发送最近10个标签
+            print(f"取出列表长度: {len(recent_tags)}")
+            tag_data = []
+            for tag in recent_tags:
+                print(f"tag状态: {tag.success}")
+                if tag.success:
+                    tag_data.append({
+                        'epc': tag.epc,
+                        'tid': tag.tid,
+                        'rssi': tag.rssi,
+                        'timestamp': tag.timestamp,
+                        'product_name': tag.product_name
+                    })
+
+            if tag_data:
+                return self.send_mqtt_command('report_tags', {'tags': tag_data})
+        else:
+            self.add_message("没有可报告的RFID标签数据")
+            return False
 
 
 def main():
