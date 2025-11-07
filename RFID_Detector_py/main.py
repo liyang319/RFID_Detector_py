@@ -9,6 +9,7 @@ from rfid_tag import RFIDTag
 from command import device_command
 from mqtt_client import MqttClient
 import json
+from serial_comm import SerialComm
 
 
 class RFIDProductionSystem:
@@ -44,6 +45,10 @@ class RFIDProductionSystem:
             client_id='RFID_DETECTOR_SYSTEM'
         )
         self.setup_mqtt_callbacks()
+
+        # 串口通信（新增）
+        self.serial_comm = SerialComm('/dev/tty.usbserial-1410', 9600)
+        self.serial_reading_active = False  # 串口读取线程状态标志
 
         # 创建界面（保持原有UI不变）
         self.create_title_section()
@@ -414,9 +419,15 @@ class RFIDProductionSystem:
             time.sleep(3)  # 延迟3秒连接，避免同时启动造成资源竞争
             self.start_mqtt_client()
 
+        def connect_serial_thread():
+            """串口连接线程"""
+            time.sleep(4)  # 延迟4秒连接，避免资源竞争
+            self.start_serial_communication()
+
         # 分别启动两个线程
         threading.Thread(target=connect_rfid_thread, daemon=True).start()
         threading.Thread(target=connect_mqtt_thread, daemon=True).start()
+        threading.Thread(target=connect_serial_thread, daemon=True).start()
 
     def connect_rfid(self):
         """连接RFID读写器"""
@@ -791,6 +802,13 @@ class RFIDProductionSystem:
                 self.add_message("MQTT客户端已断开")
             except:
                 pass
+        # 关闭串口通信
+        if hasattr(self, 'serial_comm'):
+            try:
+                self.close_serial_communication()
+                self.add_message("串口通信已关闭")
+            except:
+                pass
         self.root.destroy()
 
     def update_element_text(self, element, text: str, **kwargs) -> bool:
@@ -997,6 +1015,108 @@ class RFIDProductionSystem:
         else:
             self.add_message("没有可报告的RFID标签数据")
             return False
+
+    def start_serial_communication(self):
+        """启动串口通信（在UI线程中安全调用）"""
+        def connect_serial():
+            if self.setup_serial_communication():
+                self.add_message("串口通信启动成功")
+            else:
+                self.add_message("串口通信启动失败，请检查串口连接")
+
+        # 在UI线程中安全执行
+        self.root.after(0, connect_serial)
+
+    def setup_serial_communication(self):
+        """设置串口通信"""
+        try:
+            if self.serial_comm.open():
+                self.add_message("串口连接成功")
+                # 直接启动串口读取循环
+                self.start_serial_reading_loop()
+                return True
+            else:
+                self.add_message("串口连接失败")
+                return False
+        except Exception as e:
+            self.add_message(f"串口连接异常: {e}")
+            return False
+
+    def start_serial_reading_loop(self):
+        """启动串口读取循环（直接循环调用read_register）"""
+        def read_loop():
+            while self.serial_comm.is_open():
+                try:
+                    # 直接调用read_register方法读取寄存器
+                    data, length = self.serial_comm.read_register(0x02)  # 使用命令0x01
+                    print([hex(b) for b in data])
+                    if length > 0:
+                        # 处理接收到的数据
+                        self.handle_serial_data(data)
+                    else:
+                        # 如果没有数据，等待一段时间再读取
+                        self.add_message("串口读取超时或无数据")
+                        time.sleep(0.5)  # 等待500ms再重试
+
+                    # 控制读取频率，避免过于频繁
+                    time.sleep(0.1)  # 每次读取间隔100ms
+
+                except Exception as e:
+                    self.add_message(f"串口读取循环错误: {e}")
+                    # 出错后等待一段时间再重试
+                    time.sleep(1)
+            self.add_message("串口读取循环已停止")
+        # 启动读取循环线程
+        threading.Thread(target=read_loop, daemon=True).start()
+        self.add_message("串口读取循环已启动")
+
+    def handle_serial_data(self, data):
+        """处理串口接收到的数据"""
+        def update_ui():
+            try:
+                # 将字节数据转换为十六进制字符串显示
+                hex_data = ' '.join([f'{b:02X}' for b in data])
+                self.add_message(f"串口收到数据: {hex_data}")
+                # 解析数据
+                self.parse_serial_data(data)
+
+            except Exception as e:
+                self.add_message(f"处理串口数据错误: {e}")
+        # 在UI线程中安全处理
+        self.root.after(0, update_ui)
+
+    def parse_serial_data(self, data):
+        """解析串口数据"""
+        try:
+            if len(data) >= 8:  # 基本长度检查
+                # 示例解析逻辑
+                if data[0] == 0xFE:  # 设备地址
+                    cmd = data[1]  # 命令字
+                    self.add_message(f"收到串口命令响应: 0x{cmd:02X}")
+
+                    # 根据命令类型处理
+                    if cmd == 0x01:
+                        self.handle_register_response(data)
+                    else:
+                        self.add_message(f"未知串口命令响应: 0x{cmd:02X}")
+
+        except Exception as e:
+            self.add_message(f"解析串口数据错误: {e}")
+
+    def handle_register_response(self, data):
+        """处理寄存器响应数据"""
+        try:
+            # 示例：解析寄存器值
+            if len(data) >= 6:
+                # 假设数据在3-4字节
+                register_value = (data[3] << 8) | data[4]
+                self.add_message(f"寄存器值: {register_value}")
+
+                # 可以在这里更新界面或执行其他操作
+                # self.update_serial_display(register_value)
+
+        except Exception as e:
+            self.add_message(f"处理寄存器响应错误: {e}")
 
 
 def main():
