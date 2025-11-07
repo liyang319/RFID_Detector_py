@@ -406,6 +406,7 @@ class RFIDProductionSystem:
         messagebox.showwarning("紧急制动", "系统已紧急停止！")
 
     def start_rfid_loop_query(self, b_on):
+        print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
             # 发送开始生产指令到RFID读写器
             if self.rfid_reader.get_connection_status():
@@ -1068,12 +1069,17 @@ class RFIDProductionSystem:
             return False
 
     def start_serial_reading_loop(self):
-        """启动串口读取循环（优化版本）"""
+        """启动串口读取循环（带光栅状态检测和货物方向判断）"""
 
         def read_loop():
             read_interval = 0.05  # 减少读取间隔到50ms
             consecutive_timeouts = 0  # 连续超时计数
             max_consecutive_timeouts = 3  # 最大连续超时次数
+
+            # 光栅状态跟踪变量
+            previous_status = 0  # 上一次光栅状态
+            direction = 0  # 货物方向：0无，1入库，2出库
+            rfid_reading_active = False  # RFID读取状态
 
             while self.serial_comm.is_open():
                 try:
@@ -1081,11 +1087,66 @@ class RFIDProductionSystem:
 
                     # 使用更短的超时时间
                     data, length = self.serial_comm.read_register(0x02, timeout=0.5)
-                    print([hex(b) for b in data])
+                    # print([hex(b) for b in data])
 
                     if length > 0:
                         consecutive_timeouts = 0  # 重置超时计数
-                        self.handle_serial_data(data)
+
+                        # 解析光栅状态（第4个字节，索引3）
+                        if len(data) >= 4:
+                            current_status = data[3]  # 第4个字节是光栅状态
+
+                            # 更新当前状态
+                            self.current_status = current_status
+
+                            # 检测状态变化
+                            if current_status != previous_status:
+                                print(f"光栅状态变化: {previous_status:02X} -> {current_status:02X}")
+
+                                # 状态变化处理
+                                if current_status == 0x01:  # 光栅1被遮挡
+                                    if previous_status == 0x00:  # 从无遮挡到光栅1遮挡
+                                        # 开始入库流程
+                                        direction = 1
+                                        self.direction = 1
+                                        self.start_rfid_loop_query(True)
+                                        rfid_reading_active = True
+                                        print("开始入库流程")
+
+                                elif current_status == 0x02:  # 光栅2被遮挡
+                                    if previous_status == 0x00:  # 从无遮挡到光栅2遮挡
+                                        # 开始出库流程
+                                        direction = 2
+                                        self.direction = 2
+                                        self.start_rfid_loop_query(True)
+                                        rfid_reading_active = True
+                                        print("开始出库流程")
+
+                                elif current_status == 0x03:  # 两个光栅同时被遮挡
+                                    # 货物正在通过中间位置
+                                    if direction == 1:
+                                        print("货物入库中...")
+                                    elif direction == 2:
+                                        print("货物出库中...")
+
+                                elif current_status == 0x00:  # 无遮挡
+                                    if previous_status in [0x01, 0x02, 0x03]:  # 从有遮挡到无遮挡
+                                        # 完成流程
+                                        if rfid_reading_active:
+                                            self.start_rfid_loop_query(False)
+                                            rfid_reading_active = False
+                                            print(f"完成{'入库' if direction == 1 else '出库'}流程")
+
+                                        # 重置方向
+                                        direction = 0
+                                        self.direction = 0
+
+                                # 更新上一次状态
+                                previous_status = current_status
+
+                            self.handle_serial_data(data)
+                        else:
+                            print("数据长度不足，无法解析光栅状态")
                     else:
                         consecutive_timeouts += 1
                         if consecutive_timeouts >= max_consecutive_timeouts:
@@ -1105,7 +1166,7 @@ class RFIDProductionSystem:
             self.add_message("串口读取循环已停止")
 
         threading.Thread(target=read_loop, daemon=True).start()
-        self.add_message("串口读取循环已启动（优化版）")
+        self.add_message("串口读取循环已启动（带方向检测）")
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""
