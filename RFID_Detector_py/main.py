@@ -1055,7 +1055,7 @@ class RFIDProductionSystem:
                     start_time = time.time()
 
                     # 使用更短的超时时间
-                    data, length = self.serial_comm.read_register(0x01, timeout=0.5)
+                    data, length = self.serial_comm.read_register(0x02, timeout=0.5)
                     print([hex(b) for b in data])
 
                     if length > 0:
