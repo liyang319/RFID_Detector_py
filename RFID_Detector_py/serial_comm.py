@@ -98,7 +98,7 @@ class SerialComm:
 
         # 清空输入缓冲区，避免旧数据干扰
         self.serial_port.reset_input_buffer()
-        print([hex(b) for b in buffer])
+        # print([hex(b) for b in buffer])
         # 发送数据
         bytes_sent = self.send(buffer)
         if bytes_sent < 0:

@@ -27,6 +27,10 @@ class RFIDProductionSystem:
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
+        #方向标志
+        self.direction = 0  # 0无，1入库，2出库
+        self.current_status = 0  # 存储当前光栅状态
+
         # RFID标签管理
         self.current_tag = None
         self.tag_history = []
@@ -400,6 +404,27 @@ class RFIDProductionSystem:
             self.add_message("RFID读写器未连接，无法发送指令")
 
         messagebox.showwarning("紧急制动", "系统已紧急停止！")
+
+    def start_rfid_loop_query(self, b_on):
+        if b_on:
+            # 发送开始生产指令到RFID读写器
+            if self.rfid_reader.get_connection_status():
+                if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
+                    self.add_message("发送开始生产指令成功")
+                else:
+                    self.add_message("发送开始生产指令失败")
+            else:
+                self.add_message("RFID读写器未连接，无法发送指令")
+        else:
+            # 发送紧急停止指令到RFID读写器
+            if self.rfid_reader.get_connection_status():
+                if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
+                    self.add_message("发送紧急停止指令成功")
+                    self.report_rfid_tags_via_mqtt()
+                else:
+                    self.add_message("发送紧急停止指令失败")
+            else:
+                self.add_message("RFID读写器未连接，无法发送指令")
 
     # RFID读写器相关方法
     def auto_connect(self):
