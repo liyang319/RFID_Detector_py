@@ -215,7 +215,7 @@ class RFIDReader_CNNT:
 
             # 显示接收到的数据（调试用）
             hex_str = ' '.join([f'{b:02X}' for b in data])
-            print(f"收到RFID数据: {hex_str}")
+            # print(f"收到RFID数据: {hex_str}")
 
         elif isinstance(data, dict):
             # 处理JSON数据

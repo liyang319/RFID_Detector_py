@@ -11,7 +11,8 @@ from mqtt_client import MqttClient
 import json
 from serial_comm import SerialComm
 
-
+DATA_TYPE_INBOUND = "inbound"
+DATA_TYPE_OUTBOUND = "outbound"
 class RFIDProductionSystem:
     def __init__(self, root):
         self.root = root
@@ -409,6 +410,7 @@ class RFIDProductionSystem:
         print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
             # 发送开始生产指令到RFID读写器
+            self.tag_history.clear()
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
                     self.add_message("发送开始生产指令成功")
@@ -531,7 +533,7 @@ class RFIDProductionSystem:
 
     def process_rfid_data(self, data: bytes):
         """处理RFID二进制数据"""
-        print('process_rfid_data')
+        # print('process_rfid_data')
         # 根据你的协议解析数据并更新界面
         if len(data) >= 8:
             # 示例解析逻辑
@@ -666,14 +668,14 @@ class RFIDProductionSystem:
 
     def update_rfid_data(self, data: bytes):
         """根据二进制数据更新RFID数据（TID去重）"""
-        print('update_rfid_data')
+        # print('update_rfid_data')
         # 使用RFIDTag类解析数据
         tag = self.process_rfid_data_epc_tid_user(data)
 
         if tag.success:
             # 调试：打印TID值
             print(f"解析到的TID: '{tag.tid}'")
-            print(f"历史记录中的TID数量: {len(self.tag_history)}")
+            # print(f"历史记录中的TID数量: {len(self.tag_history)}")
             # 检查TID是否已存在
             tid_exists = any(existing_tag.tid == tag.tid for existing_tag in self.tag_history)
 
@@ -991,11 +993,11 @@ class RFIDProductionSystem:
 
         threading.Thread(target=connect_thread, daemon=True).start()
 
-    def send_mqtt_command(self, command_type, data=None):
+    def send_mqtt_command(self, command_type, data_type, data=None):
         """发送MQTT命令"""
         print('send_mqtt_command')
-        print(f"mqtt_client: {hasattr(self, 'mqtt_client')}")
-        print(f"connected: {self.mqtt_client.connected}")
+        # print(f"mqtt_client: {hasattr(self, 'mqtt_client')}")
+        # print(f"connected: {self.mqtt_client.connected}")
         if not hasattr(self, 'mqtt_client') or not self.mqtt_client.connected:
             self.add_message("MQTT客户端未连接，无法发送命令")
             return False
@@ -1003,7 +1005,8 @@ class RFIDProductionSystem:
         try:
             command_data = {
                 "cmd": command_type,
-                "number": len(self.tag_history)
+                "number": len(self.tag_history),
+                "data_type": data_type
             }
             if data:
                 command_data.update(data)
@@ -1016,17 +1019,17 @@ class RFIDProductionSystem:
             self.add_message(f"发送MQTT命令失败: {e}")
             return False
 
-    def report_rfid_tags_via_mqtt(self):
+    def report_rfid_tags_via_mqtt(self, data_type=DATA_TYPE_INBOUND):
         """通过MQTT报告RFID标签"""
-        print('report_rfid_tags_via_mqtt')
+        print(f"report_rfid_tags_via_mqtt type={data_type}")
         print(f"当前列表长度: {len(self.tag_history)}")
         if self.tag_history:
             # 可以发送最近的标签信息
             recent_tags = self.tag_history[-10:]  # 发送最近10个标签
-            print(f"取出列表长度: {len(recent_tags)}")
+            # print(f"取出列表长度: {len(recent_tags)}")
             tag_data = []
             for tag in recent_tags:
-                print(f"tag状态: {tag.success}")
+                # print(f"tag状态: {tag.success}")
                 if tag.success:
                     tag_data.append({
                         'epc': tag.epc,
@@ -1037,7 +1040,8 @@ class RFIDProductionSystem:
                     })
 
             if tag_data:
-                return self.send_mqtt_command('report_tags', {'tags': tag_data})
+                return self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
+                self.tag_history.clear()
         else:
             self.add_message("没有可报告的RFID标签数据")
             return False
@@ -1144,6 +1148,7 @@ class RFIDProductionSystem:
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
                                     print("入库完成")
+                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND)
 
                             elif current_state == STATE_OUTBOUND_START:
                                 if current_status == 0x03:  # 光栅1+2同时遮挡
@@ -1176,6 +1181,7 @@ class RFIDProductionSystem:
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
                                     print("出库完成")
+                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND)
 
                             # 处理异常状态转换
                             if current_status == 0x00 and current_state != STATE_IDLE:

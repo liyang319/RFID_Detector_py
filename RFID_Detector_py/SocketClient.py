@@ -153,8 +153,8 @@ class SocketClient:
             # 调试信息
             hex_data = data.hex().upper()
             formatted_hex = ' '.join([hex_data[i:i + 2] for i in range(0, len(hex_data), 2)])
-            print(f"接收到二进制数据: {formatted_hex}")
-            print(f"数据长度: {len(data)}字节")
+            # print(f"接收到二进制数据: {formatted_hex}")
+            # print(f"数据长度: {len(data)}字节")
 
         except Exception as e:
             if self.error_callback:
