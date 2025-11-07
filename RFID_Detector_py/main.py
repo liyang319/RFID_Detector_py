@@ -423,7 +423,7 @@ class RFIDProductionSystem:
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
                     self.add_message("发送紧急停止指令成功")
-                    self.report_rfid_tags_via_mqtt()
+                    # self.report_rfid_tags_via_mqtt()
                 else:
                     self.add_message("发送紧急停止指令失败")
             else:
