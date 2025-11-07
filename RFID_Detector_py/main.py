@@ -1043,32 +1043,44 @@ class RFIDProductionSystem:
             return False
 
     def start_serial_reading_loop(self):
-        """启动串口读取循环（直接循环调用read_register）"""
+        """启动串口读取循环（优化版本）"""
+
         def read_loop():
+            read_interval = 0.05  # 减少读取间隔到50ms
+            consecutive_timeouts = 0  # 连续超时计数
+            max_consecutive_timeouts = 3  # 最大连续超时次数
+
             while self.serial_comm.is_open():
                 try:
-                    # 直接调用read_register方法读取寄存器
-                    data, length = self.serial_comm.read_register(0x02)  # 使用命令0x01
+                    start_time = time.time()
+
+                    # 使用更短的超时时间
+                    data, length = self.serial_comm.read_register(0x01, timeout=0.5)
                     print([hex(b) for b in data])
+
                     if length > 0:
-                        # 处理接收到的数据
+                        consecutive_timeouts = 0  # 重置超时计数
                         self.handle_serial_data(data)
                     else:
-                        # 如果没有数据，等待一段时间再读取
-                        self.add_message("串口读取超时或无数据")
-                        time.sleep(0.5)  # 等待500ms再重试
+                        consecutive_timeouts += 1
+                        if consecutive_timeouts >= max_consecutive_timeouts:
+                            self.add_message("串口连续超时，检查连接状态")
+                            consecutive_timeouts = 0
 
-                    # 控制读取频率，避免过于频繁
-                    time.sleep(0.1)  # 每次读取间隔100ms
+                    # 精确控制读取间隔
+                    elapsed = time.time() - start_time
+                    sleep_time = max(0, read_interval - elapsed)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
 
                 except Exception as e:
                     self.add_message(f"串口读取循环错误: {e}")
-                    # 出错后等待一段时间再重试
-                    time.sleep(1)
+                    time.sleep(0.5)  # 出错后等待500ms
+
             self.add_message("串口读取循环已停止")
-        # 启动读取循环线程
+
         threading.Thread(target=read_loop, daemon=True).start()
-        self.add_message("串口读取循环已启动")
+        self.add_message("串口读取循环已启动（优化版）")
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""

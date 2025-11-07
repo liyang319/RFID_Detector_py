@@ -47,62 +47,73 @@ class SerialComm:
             print("串口未打开，无法发送数据")
             return -1
 
-    def receive(self, max_length=100):
-        """接收数据，直到达到最大长度或没有更多数据"""
-        received_data = bytearray()  # 使用 bytearray 以便于拼接字节
+    def receive(self, max_length=100, timeout=0.5):
+        """接收数据（优化版本，减少超时等待）"""
+        received_data = bytearray()
+        start_time = time.time()
 
         while len(received_data) < max_length:
-            # 使用 select 监视串口
-            ready, _, _ = select.select([self.serial_port], [], [], self.serial_port.timeout)
-
-            if ready:  # 如果有数据可读
-                byte = self.serial_port.read(1)  # 读取1字节数据
-                if byte:  # 如果读取到数据
-                    received_data.extend(byte)  # 将数据添加到 received_data
-                else:
-                    break  # 读取到空数据，退出循环
-            else:
-                # 超时，没有数据可读，退出循环
+            # 检查是否超时
+            if time.time() - start_time > timeout:
                 break
+
+            # 使用更短的超时时间
+            ready, _, _ = select.select([self.serial_port], [], [], 0.1)  # 100ms超时
+
+            if ready:
+                # 一次性读取所有可用数据
+                available = self.serial_port.in_waiting
+                if available > 0:
+                    chunk = self.serial_port.read(min(available, max_length - len(received_data)))
+                    received_data.extend(chunk)
+            else:
+                # 如果没有数据，检查是否应该继续等待
+                if len(received_data) > 0:
+                    # 如果已经有部分数据，立即返回
+                    break
 
         return received_data
 
-    def read_register(self, cmd):
+    def read_register(self, cmd, timeout=1.0):
         """
-        读取寄存器数据（对应C++的readRegister方法）
+        读取寄存器数据（优化版本）
 
         Args:
             cmd: 命令字节
+            timeout: 总超时时间（秒）
 
         Returns:
             tuple: (data, length) - 接收到的数据和长度
         """
         if not self.serial_port or not self.serial_port.is_open:
-            print("串口未打开")
             return bytearray(), -1
 
-        # 准备发送缓冲区（对应C++的buffer[8]）
+        start_time = time.time()
+
+        # 准备发送缓冲区
         buffer = [0xFE, cmd, 0x00, 0x00, 0x00, 0x08]
-
-        # 计算CRC16校验码
         crc_value = self.crc16(buffer, 6)
+        buffer.append(crc_value & 0xFF)
+        buffer.append((crc_value >> 8) & 0xFF)
 
-        # 添加CRC校验码到缓冲区
-        buffer.append(crc_value & 0xFF)  # 低字节
-        buffer.append((crc_value >> 8) & 0xFF)  # 高字节
+        # 清空输入缓冲区，避免旧数据干扰
+        self.serial_port.reset_input_buffer()
         print([hex(b) for b in buffer])
-        # 串口发送（对应writeDataToPort）
+        # 发送数据
         bytes_sent = self.send(buffer)
         if bytes_sent < 0:
-            print("写入错误!")
             return bytearray(), -1
 
-        # 接收寄存器数据（对应readDataFromPort）
-        rx_data = self.receive(100)  # 最大接收100字节
+        # 接收数据（使用更短的超时）
+        rx_data = self.receive(100, timeout=0.3)  # 接收超时300ms
 
-        if len(rx_data) == 0:
-            print("读取错误!")
-            return bytearray(), -1
+        # 如果收到数据但长度不够，可能是数据还在传输中，再等待一下
+        if 0 < len(rx_data) < 8:  # 假设完整帧至少8字节
+            remaining_time = timeout - (time.time() - start_time)
+            if remaining_time > 0:
+                # 继续接收剩余数据
+                additional_data = self.receive(100 - len(rx_data), timeout=min(0.2, remaining_time))
+                rx_data.extend(additional_data)
 
         return rx_data, len(rx_data)
 
