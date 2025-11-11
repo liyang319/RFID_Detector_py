@@ -674,7 +674,7 @@ class RFIDProductionSystem:
 
         if tag.success:
             # 调试：打印TID值
-            print(f"解析到的TID: '{tag.tid}'")
+            # print(f"解析到的TID: '{tag.tid}'")
             # print(f"历史记录中的TID数量: {len(self.tag_history)}")
             # 检查TID是否已存在
             tid_exists = any(existing_tag.tid == tag.tid for existing_tag in self.tag_history)
@@ -1073,7 +1073,7 @@ class RFIDProductionSystem:
             return False
 
     def start_serial_reading_loop(self):
-        """启动串口读取循环（使用状态机，检测同时遮挡状态）"""
+        """启动串口读取循环（支持灵活路径的状态机）"""
 
         def read_loop():
             # 状态机定义
@@ -1088,6 +1088,9 @@ class RFIDProductionSystem:
             current_state = STATE_IDLE
             previous_status = 0
             read_interval = 0.05
+            # 防重复报告机制
+            last_report_time = 0
+            report_cooldown = 1.0  # 1秒冷却时间
 
             while self.serial_comm.is_open():
                 try:
@@ -1119,15 +1122,17 @@ class RFIDProductionSystem:
 
                             elif current_state == STATE_INBOUND_START:
                                 if current_status == 0x03:  # 光栅1+2同时遮挡
-                                    # 进入中间状态
+                                    # 路径1：有同时遮挡
                                     current_state = STATE_INBOUND_MIDDLE
-                                    print("入库中间：光栅1+2同时遮挡")
-                                elif current_status == 0x00:  # 无遮挡（异常情况）
-                                    # 重置状态
-                                    current_state = STATE_IDLE
-                                    self.direction = 0
-                                    self.start_rfid_loop_query(False)
-                                    print("入库取消：未检测到同时遮挡状态")
+                                    print("入库中间：光栅1+2同时遮挡（路径1）")
+                                elif current_status == 0x00:  # 无遮挡
+                                    # 路径2：无同时遮挡，允许直接进入无遮挡状态
+                                    current_state = STATE_INBOUND_END  # 直接进入结束状态等待光栅2遮挡
+                                    print("入库路径2：光栅1遮挡后直接无遮挡")
+                                elif current_status == 0x02:  # 光栅2遮挡（直接进入结束状态）
+                                    # 直接进入结束状态
+                                    current_state = STATE_INBOUND_END
+                                    print("入库结束：光栅2遮挡（直接进入）")
 
                             elif current_state == STATE_INBOUND_MIDDLE:
                                 if current_status == 0x02:  # 光栅2遮挡
@@ -1139,28 +1144,45 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
-                                    print("入库中断：未完成完整流程")
+                                    print("入库中断：中间状态检测到无遮挡")
 
                             elif current_state == STATE_INBOUND_END:
-                                if current_status == 0x00:  # 无遮挡
+                                if current_status == 0x02:  # 光栅2遮挡（路径2：从无遮挡进入光栅2遮挡）
+                                    # 保持结束状态，等待无遮挡
+                                    print("入库结束：检测到光栅2遮挡")
+                                elif current_status == 0x00:  # 无遮挡
                                     # 完成入库
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
-                                    print("入库完成")
-                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND)
-
-                            elif current_state == STATE_OUTBOUND_START:
-                                if current_status == 0x03:  # 光栅1+2同时遮挡
-                                    # 进入中间状态
-                                    current_state = STATE_OUTBOUND_MIDDLE
-                                    print("出库中间：光栅1+2同时遮挡")
-                                elif current_status == 0x00:  # 无遮挡（异常情况）
+                                    # 防重复报告
+                                    current_time = time.time()
+                                    if current_time - last_report_time >= report_cooldown:
+                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND)
+                                        last_report_time = current_time
+                                        print("入库完成")
+                                    else:
+                                        print("入库完成（跳过重复报告）")
+                                elif current_status == 0x01:  # 又回到光栅1遮挡（异常）
                                     # 重置状态
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
-                                    print("出库取消：未检测到同时遮挡状态")
+                                    print("入库异常：结束状态又回到光栅1遮挡")
+
+                            elif current_state == STATE_OUTBOUND_START:
+                                if current_status == 0x03:  # 光栅1+2同时遮挡
+                                    # 路径1：有同时遮挡
+                                    current_state = STATE_OUTBOUND_MIDDLE
+                                    print("出库中间：光栅1+2同时遮挡（路径1）")
+                                elif current_status == 0x00:  # 无遮挡
+                                    # 路径2：无同时遮挡，允许直接进入无遮挡状态
+                                    current_state = STATE_OUTBOUND_END  # 直接进入结束状态等待光栅1遮挡
+                                    print("出库路径2：光栅2遮挡后直接无遮挡")
+                                elif current_status == 0x01:  # 光栅1遮挡（直接进入结束状态）
+                                    # 直接进入结束状态
+                                    current_state = STATE_OUTBOUND_END
+                                    print("出库结束：光栅1遮挡（直接进入）")
 
                             elif current_state == STATE_OUTBOUND_MIDDLE:
                                 if current_status == 0x01:  # 光栅1遮挡
@@ -1172,26 +1194,47 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
-                                    print("出库中断：未完成完整流程")
+                                    print("出库中断：中间状态检测到无遮挡")
 
                             elif current_state == STATE_OUTBOUND_END:
-                                if current_status == 0x00:  # 无遮挡
+                                if current_status == 0x01:  # 光栅1遮挡（路径2：从无遮挡进入光栅1遮挡）
+                                    # 保持结束状态，等待无遮挡
+                                    print("出库结束：检测到光栅1遮挡")
+                                elif current_status == 0x00:  # 无遮挡
                                     # 完成出库
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
-                                    print("出库完成")
-                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND)
-
-                            # 处理异常状态转换
-                            if current_status == 0x00 and current_state != STATE_IDLE:
-                                # 如果在非空闲状态检测到无遮挡，重置状态
-                                if current_state not in [STATE_INBOUND_END, STATE_OUTBOUND_END]:
-                                    print(f"异常中断：状态{current_state}检测到无遮挡")
+                                    # 防重复报告
+                                    current_time = time.time()
+                                    if current_time - last_report_time >= report_cooldown:
+                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND)
+                                        last_report_time = current_time
+                                        print("出库完成")
+                                    else:
+                                        print("出库完成（跳过重复报告）")
+                                elif current_status == 0x02:  # 又回到光栅2遮挡（异常）
+                                    # 重置状态
+                                    current_state = STATE_IDLE
+                                    self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    print("出库异常：结束状态又回到光栅2遮挡")
 
-                                current_state = STATE_IDLE
-                                self.direction = 0
+                            # 处理其他异常状态转换
+                            if current_status == 0x00 and current_state != STATE_IDLE:
+                                # 如果在非结束状态检测到无遮挡，检查是否允许该转换
+                                if current_state not in [STATE_INBOUND_END, STATE_OUTBOUND_END]:
+                                    # 检查是否为允许的路径
+                                    if (current_state == STATE_INBOUND_START and previous_status == 0x01) or \
+                                            (current_state == STATE_OUTBOUND_START and previous_status == 0x02):
+                                        # 这是允许的路径2，不重置状态
+                                        print(f"允许的路径2：状态{current_state}检测到无遮挡")
+                                    else:
+                                        # 其他情况重置状态
+                                        print(f"异常中断：状态{current_state}检测到无遮挡")
+                                        self.start_rfid_loop_query(False)
+                                        current_state = STATE_IDLE
+                                        self.direction = 0
 
                             previous_status = current_status
 
@@ -1208,7 +1251,7 @@ class RFIDProductionSystem:
                     time.sleep(0.5)
 
         threading.Thread(target=read_loop, daemon=True).start()
-        self.add_message("串口读取循环已启动（带完整状态检测）")
+        self.add_message("串口读取循环已启动（灵活路径版本）")
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""
