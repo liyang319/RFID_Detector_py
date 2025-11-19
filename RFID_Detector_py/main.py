@@ -1073,7 +1073,7 @@ class RFIDProductionSystem:
             return False
 
     def start_serial_reading_loop(self):
-        """启动串口读取循环（支持灵活路径的状态机）"""
+        """启动串口读取循环（支持灵活路径和超时检测的状态机）"""
 
         def read_loop():
             # 状态机定义
@@ -1092,6 +1092,11 @@ class RFIDProductionSystem:
             last_report_time = 0
             report_cooldown = 1.0  # 1秒冷却时间
 
+            # 超时检测机制
+            last_state_change_time = time.time()
+            idle_timeout = 10.0  # 10秒超时
+            process_start_time = None  # 流程开始时间
+
             while self.serial_comm.is_open():
                 try:
                     start_time = time.time()
@@ -1104,13 +1109,19 @@ class RFIDProductionSystem:
                         if current_status != previous_status:
                             print(f"状态变化: {previous_status:02X}->{current_status:02X}, 当前状态: {current_state}")
 
+                            # 记录状态变化时间
+                            last_state_change_time = time.time()
+
                             # 状态机处理
+                            old_state = current_state
+
                             if current_state == STATE_IDLE:
                                 if current_status == 0x01:  # 光栅1遮挡
                                     # 开始入库流程
                                     current_state = STATE_INBOUND_START
                                     self.direction = 1
                                     self.start_rfid_loop_query(True)
+                                    process_start_time = time.time()  # 记录流程开始时间
                                     print("入库开始：光栅1遮挡")
 
                                 elif current_status == 0x02:  # 光栅2遮挡
@@ -1118,6 +1129,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_OUTBOUND_START
                                     self.direction = 2
                                     self.start_rfid_loop_query(True)
+                                    process_start_time = time.time()  # 记录流程开始时间
                                     print("出库开始：光栅2遮挡")
 
                             elif current_state == STATE_INBOUND_START:
@@ -1144,6 +1156,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     print("入库中断：中间状态检测到无遮挡")
 
                             elif current_state == STATE_INBOUND_END:
@@ -1155,6 +1168,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     # 防重复报告
                                     current_time = time.time()
                                     if current_time - last_report_time >= report_cooldown:
@@ -1168,6 +1182,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     print("入库异常：结束状态又回到光栅1遮挡")
 
                             elif current_state == STATE_OUTBOUND_START:
@@ -1194,6 +1209,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     print("出库中断：中间状态检测到无遮挡")
 
                             elif current_state == STATE_OUTBOUND_END:
@@ -1205,6 +1221,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     # 防重复报告
                                     current_time = time.time()
                                     if current_time - last_report_time >= report_cooldown:
@@ -1218,6 +1235,7 @@ class RFIDProductionSystem:
                                     current_state = STATE_IDLE
                                     self.direction = 0
                                     self.start_rfid_loop_query(False)
+                                    process_start_time = None
                                     print("出库异常：结束状态又回到光栅2遮挡")
 
                             # 处理其他异常状态转换
@@ -1235,10 +1253,27 @@ class RFIDProductionSystem:
                                         self.start_rfid_loop_query(False)
                                         current_state = STATE_IDLE
                                         self.direction = 0
+                                        process_start_time = None
+
+                            # 如果状态发生变化，更新状态变化时间
+                            if old_state != current_state:
+                                last_state_change_time = time.time()
 
                             previous_status = current_status
 
                         self.handle_serial_data(data)
+
+                    # 超时检测
+                    current_time = time.time()
+                    if current_state != STATE_IDLE and process_start_time is not None:
+                        # 检查是否超时（10秒内无状态变化）
+                        if current_time - last_state_change_time > idle_timeout:
+                            print(f"超时检测：状态{current_state}超过{idle_timeout}秒无变化，重置状态")
+                            self.start_rfid_loop_query(False)
+                            current_state = STATE_IDLE
+                            self.direction = 0
+                            process_start_time = None
+                            print("系统已重置：超时保护")
 
                     # 控制读取间隔
                     elapsed = time.time() - start_time
@@ -1251,7 +1286,7 @@ class RFIDProductionSystem:
                     time.sleep(0.5)
 
         threading.Thread(target=read_loop, daemon=True).start()
-        self.add_message("串口读取循环已启动（灵活路径版本）")
+        self.add_message("串口读取循环已启动（带超时检测版本）")
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""
