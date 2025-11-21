@@ -1025,7 +1025,7 @@ class RFIDProductionSystem:
         print(f"当前列表长度: {len(self.tag_history)}")
         if self.tag_history:
             # 可以发送最近的标签信息
-            recent_tags = self.tag_history[-10:]  # 发送最近10个标签
+            recent_tags = self.tag_history[:]  # 发送最近10个标签
             # print(f"取出列表长度: {len(recent_tags)}")
             tag_data = []
             for tag in recent_tags:

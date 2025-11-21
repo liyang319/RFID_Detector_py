@@ -53,19 +53,19 @@ class RFIDTag:
 
             # 解析PC数据 (字节5-6，共2字节)
             pc_data = data[5:7]
-            self.pc = ' '.join([f'{b:02X}' for b in pc_data])
+            self.pc = ''.join([f'{b:02X}' for b in pc_data])
 
             # 解析EPC数据 (字节8-19，共12字节)
             epc_data = data[7:19]
-            self.epc = ' '.join([f'{b:02X}' for b in epc_data])
+            self.epc = ''.join([f'{b:02X}' for b in epc_data])
 
             # 解析TID数据 (字节20-31，共12字节)
             tid_data = data[19:31]
-            self.tid = ' '.join([f'{b:02X}' for b in tid_data])
+            self.tid = ''.join([f'{b:02X}' for b in tid_data])
 
             # 解析USER数据 (字节32-47，共16字节)
             user_data = data[31:47]
-            self.user_data = ' '.join([f'{b:02X}' for b in user_data])
+            self.user_data = ''.join([f'{b:02X}' for b in user_data])
 
             # 解析RSSI数据 (字节47-48，共2字节)
             rssi_data = data[47:49]
