@@ -103,7 +103,7 @@ class RFIDTag:
                 # 例如：前几个字节表示产品名称编码等
 
                 # 临时示例数据
-                self.product_name = f"产品-{self.epc[:8]}"
+                self.product_name = f"乳化炸药"
                 self.manufacturer = "默认生产企业"
                 self.license_number = "SC20240001"
                 self.production_date = "2024-08-15"

@@ -47,7 +47,7 @@ class RFIDProductionSystem:
             port=1883,
             username='None',  # 根据实际情况修改
             password='None',  # 根据实际情况修改
-            client_id='RFID_DETECTOR_SYSTEM'
+            client_id='detector_001'
         )
         self.setup_mqtt_callbacks()
 
@@ -1004,14 +1004,14 @@ class RFIDProductionSystem:
 
         try:
             command_data = {
-                "cmd": command_type,
-                "number": len(self.tag_history),
+                "command": command_type,
+                "tag_count": len(self.tag_history),
                 "data_type": data_type
             }
             if data:
                 command_data.update(data)
 
-            message = json.dumps([command_data])
+            message = json.dumps(command_data)
             self.mqtt_client.publish(self.mqtt_client.command_topic, message)
             self.add_message(f"发送MQTT命令: {command_type}")
             return True

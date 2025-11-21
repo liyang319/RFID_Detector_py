@@ -26,9 +26,9 @@ class MqttClient:
         self.client.on_message = self.on_message
         self.subscriptions = []
 
-        self.data_topic = "DEVICE/DATA/DTU/" + client_id
-        self.response_topic = "DEVICE/RESPONSE/DTU/" + client_id
-        self.command_topic = "DEVICE/COMMAND/DTU/" + client_id
+        self.data_topic = "rfid/command/" + client_id
+        self.response_topic = "rfid/response/" + client_id
+        self.command_topic = "rfid/data/" + client_id
         self.connected = False
 
         # 消息队列
