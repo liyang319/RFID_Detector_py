@@ -13,12 +13,29 @@ from serial_comm import SerialComm
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
+
+
 class RFIDProductionSystem:
     def __init__(self, root):
         self.root = root
         self.root.title("RFID检测系统")
         self.root.geometry("1000x800")
-        self.root.configure(bg='#f0f0f0')
+
+        # 工业风格配色方案
+        self.industrial_colors = {
+            'primary_bg': '#2c3e50',  # 深蓝色 - 主背景
+            'secondary_bg': '#34495e',  # 稍浅蓝 - 次要背景
+            'panel_bg': '#ecf0f1',  # 浅灰色 - 面板背景
+            'accent': '#3498db',  # 蓝色 - 强调色
+            'success': '#27ae60',  # 绿色 - 成功/正常
+            'warning': '#f39c12',  # 橙色 - 警告
+            'danger': '#e74c3c',  # 红色 - 危险/错误
+            'text_light': '#ffffff',  # 白色 - 浅色文本
+            'text_dark': '#2c3e50',  # 深蓝色 - 深色文本
+            'border': '#bdc3c7'  # 灰色 - 边框
+        }
+
+        self.root.configure(bg=self.industrial_colors['primary_bg'])
         self.root.resizable(True, True)
 
         # 系统状态变量
@@ -28,7 +45,7 @@ class RFIDProductionSystem:
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
-        #方向标志
+        # 方向标志
         self.direction = 0  # 0无，1入库，2出库
         self.current_status = 0  # 存储当前光栅状态
 
@@ -77,275 +94,355 @@ class RFIDProductionSystem:
 
     def create_title_section(self):
         """创建标题区域"""
-        title_frame = tk.Frame(self.root, bg='#2c3e50', height=70)
+        title_frame = tk.Frame(self.root, bg=self.industrial_colors['primary_bg'], height=50)
         title_frame.pack(fill='x', padx=5, pady=5)
         title_frame.pack_propagate(False)
 
         title_label = tk.Label(title_frame, text="RFID检测系统",
                                font=("微软雅黑", 20, "bold"),
-                               bg='#2c3e50', fg='white')
-        title_label.pack(pady=20)
+                               bg=self.industrial_colors['primary_bg'],
+                               fg=self.industrial_colors['text_light'])
+        title_label.pack(pady=10)
+
+        # 添加分隔线
+        separator = ttk.Separator(self.root, orient='horizontal')
+        separator.pack(fill='x', padx=10, pady=5)
 
     def create_dashboard_section(self):
-        """创建数据看板区域"""
+        """创建数据看板区域 - 工业风格优化"""
         dashboard_frame = tk.LabelFrame(self.root, text="数据看板",
-                                       font=("微软雅黑", 12, "bold"),
-                                       bg='white', bd=2, relief='groove',
-                                       fg='#2c3e50')
-        dashboard_frame.pack(fill='x', padx=15, pady=5)
+                                        font=("微软雅黑", 12, "bold"),
+                                        bg=self.industrial_colors['panel_bg'],
+                                        bd=2,
+                                        relief='ridge',
+                                        fg=self.industrial_colors['primary_bg'])
+        dashboard_frame.pack(fill='x', padx=15, pady=8)
 
         # 第一行：设备号和工位名称
-        row1_frame = tk.Frame(dashboard_frame, bg='white')
-        row1_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        row1_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
+        row1_frame.pack(fill='x', padx=10, pady=5)
 
         # 设备号
         tk.Label(row1_frame, text="设备号:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         tk.Label(row1_frame, text="RFID-PROD-001", font=("微软雅黑", 10, "bold"),
-                 bg='white', fg='#2c3e50').pack(side='left', padx=(0, 40))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['accent']).pack(side='left', padx=(0, 40))
 
         # 工位名称（编辑框）
         tk.Label(row1_frame, text="工位名称:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.station_entry = tk.Entry(row1_frame, width=20, font=("微软雅黑", 10),
-                                      relief='solid', bd=1)
+                                      relief='solid', bd=1, bg='white')
         self.station_entry.insert(0, "检测工位01")
         self.station_entry.pack(side='left')
 
         # 第二行：当前位置、当前时间、软件版本
-        row2_frame = tk.Frame(dashboard_frame, bg='white')
-        row2_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        row2_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
+        row2_frame.pack(fill='x', padx=10, pady=5)
 
         # 当前位置
         tk.Label(row2_frame, text="当前位置:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         tk.Label(row2_frame, text="经度116.3918173°, 纬度39.9797956°",
-                 font=("微软雅黑", 10), bg='white', fg='#2c3e50').pack(side='left', padx=(0, 40))
+                 font=("微软雅黑", 10),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['text_dark']).pack(side='left', padx=(0, 40))
 
         # 当前时间
         tk.Label(row2_frame, text="当前时间:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.time_label = tk.Label(row2_frame, text="", font=("微软雅黑", 10),
-                                   bg='white', fg='#2c3e50')
+                                   bg=self.industrial_colors['panel_bg'],
+                                   fg=self.industrial_colors['text_dark'])
         self.time_label.pack(side='left', padx=(0, 40))
 
         # 软件版本
         tk.Label(row2_frame, text="软件版本:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         tk.Label(row2_frame, text="v2.0.1", font=("微软雅黑", 10, "bold"),
-                 bg='white', fg='#2c3e50').pack(side='left')
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['accent']).pack(side='left')
 
         # 第三行：产线运行时间、当前托盘装载数量、今日生产总量
-        row3_frame = tk.Frame(dashboard_frame, bg='white')  # 改为白色背景
-        row3_frame.pack(fill='x', padx=10, pady=5)  # 减小行距，与其它行对齐
+        row3_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
+        row3_frame.pack(fill='x', padx=10, pady=5)
 
         # 产线运行时间
         tk.Label(row3_frame, text="产线运行时间:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.runtime_label = tk.Label(row3_frame, text=self.line_runtime,
-                                      font=("微软雅黑", 10), bg='white', fg='#e74c3c')
+                                      font=("微软雅黑", 10, "bold"),
+                                      bg=self.industrial_colors['panel_bg'],
+                                      fg=self.industrial_colors['accent'])
         self.runtime_label.pack(side='left', padx=(0, 40))
 
         # 当前托盘装载数量
         tk.Label(row3_frame, text="当前托盘装载数量:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.current_load_label = tk.Label(row3_frame, text=str(self.current_load),
-                                           font=("微软雅黑", 10), bg='white', fg='#e74c3c')
+                                           font=("微软雅黑", 10, "bold"),
+                                           bg=self.industrial_colors['panel_bg'],
+                                           fg=self.industrial_colors['accent'])
         self.current_load_label.pack(side='left', padx=(0, 40))
 
         # 今日生产总量
         tk.Label(row3_frame, text="今日生产总量:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.daily_label = tk.Label(row3_frame, text=str(self.daily_production),
-                                    font=("微软雅黑", 10), bg='white', fg='#e74c3c')
+                                    font=("微软雅黑", 10, "bold"),
+                                    bg=self.industrial_colors['panel_bg'],
+                                    fg=self.industrial_colors['accent'])
         self.daily_label.pack(side='left')
 
         # 第四行：当前产线运行状态 + 运行产线按钮
-        row4_frame = tk.Frame(dashboard_frame, bg='white')
-        row4_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        row4_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
+        row4_frame.pack(fill='x', padx=10, pady=8)
 
         # 左侧状态区域
-        status_left_frame = tk.Frame(row4_frame, bg='white')
-        status_left_frame.pack(side='left', fill='x', expand=True)
+        status_left_frame = tk.Frame(row4_frame, bg=self.industrial_colors['panel_bg'])
+        status_left_frame.pack(side='left', fill='both', expand=True)
 
-        tk.Label(status_left_frame, text="当前产线运行状态:",
-                 font=("微软雅黑", 11, "bold"), bg='white').pack(anchor='w')
+        # 状态标题和状态指示器放在同一行
+        status_title = tk.Label(status_left_frame, text="当前产线运行状态:",
+                                font=("微软雅黑", 11, "bold"),
+                                bg=self.industrial_colors['panel_bg'],
+                                fg=self.industrial_colors['primary_bg'])
+        status_title.pack(side='left', padx=(0, 10))
 
-        status_indicators = tk.Frame(status_left_frame, bg='white')
-        status_indicators.pack(anchor='w', pady=2)  # 减小行距
-
-        self.normal_status = tk.Label(status_indicators, text="● 正常",
+        # 状态指示器也放在同一行
+        self.normal_status = tk.Label(status_left_frame, text="● 正常",
                                       font=("微软雅黑", 12, "bold"),
-                                      fg='#27ae60', bg='white')
-        self.normal_status.pack(side='left', padx=10)
+                                      fg=self.industrial_colors['success'],
+                                      bg=self.industrial_colors['panel_bg'])
+        self.normal_status.pack(side='left', padx=(0, 10))
 
-        self.abnormal_status = tk.Label(status_indicators, text="● 异常",
+        self.abnormal_status = tk.Label(status_left_frame, text="● 异常",
                                         font=("微软雅黑", 12),
-                                        fg='#bdc3c7', bg='white')
-        self.abnormal_status.pack(side='left', padx=10)
+                                        fg=self.industrial_colors['border'],
+                                        bg=self.industrial_colors['panel_bg'])
+        self.abnormal_status.pack(side='left', padx=(0, 10))
 
-        # 右侧运行产线按钮
+        # 右侧运行产线按钮 - 工业风格按钮
         self.run_button = tk.Button(row4_frame, text="运行产线",
                                     font=("微软雅黑", 11, "bold"),
-                                    bg='#27ae60', fg='black',
-                                    width=12, height=1,
+                                    bg=self.industrial_colors['success'],
+                                    fg=self.industrial_colors['text_light'],
+                                    activebackground=self.industrial_colors['success'],
+                                    activeforeground=self.industrial_colors['text_light'],
+                                    width=12, height=1, bd=2, relief='raised',
                                     command=self.toggle_production)
         self.run_button.pack(side='right', padx=10)
 
         # 第五行：异常信息 + 紧急制动按钮
-        row5_frame = tk.Frame(dashboard_frame, bg='white')
-        row5_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        row5_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
+        row5_frame.pack(fill='x', padx=10, pady=8)
 
-        # 左侧异常信息
-        error_left_frame = tk.Frame(row5_frame, bg='white')
+        # 左侧异常信息 - 修改为同一行显示
+        error_left_frame = tk.Frame(row5_frame, bg=self.industrial_colors['panel_bg'])
         error_left_frame.pack(side='left', fill='x', expand=True)
 
+        # 异常信息标题和内容放在同一行
         tk.Label(error_left_frame, text="异常信息:",
-                 font=("微软雅黑", 11, "bold"), bg='white').pack(anchor='w')
+                 font=("微软雅黑", 11, "bold"),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 10))
 
         self.error_label = tk.Label(error_left_frame, text=self.error_message,
-                                    font=("微软雅黑", 11), fg='#27ae60', bg='white')
-        self.error_label.pack(anchor='w')
+                                    font=("微软雅黑", 11),
+                                    fg=self.industrial_colors['success'],
+                                    bg=self.industrial_colors['panel_bg'])
+        self.error_label.pack(side='left')
 
-        # 右侧紧急制动按钮
+        # 右侧紧急制动按钮 - 工业风格按钮
         self.emergency_button = tk.Button(row5_frame, text="紧急制动",
                                           font=("微软雅黑", 11, "bold"),
-                                          bg='#e74c3c', fg='black',
-                                          width=12, height=1,
+                                          bg=self.industrial_colors['danger'],
+                                          fg=self.industrial_colors['text_light'],
+                                          activebackground=self.industrial_colors['danger'],
+                                          activeforeground=self.industrial_colors['text_light'],
+                                          width=12, height=1, bd=2, relief='raised',
                                           command=self.emergency_stop)
         self.emergency_button.pack(side='right', padx=10)
 
     def create_rfid_info_section(self):
-        """创建RFID信息区域（放在中间）"""
+        """创建RFID信息区域（放在中间）- 工业风格优化"""
         tray_frame = tk.LabelFrame(self.root, text="标签信息",
                                    font=("微软雅黑", 12, "bold"),
-                                   bg='white', bd=2, relief='groove',
-                                   fg='#2c3e50')
-        tray_frame.pack(fill='both', expand=True, padx=15, pady=5)  # 减小行距
+                                   bg=self.industrial_colors['panel_bg'],
+                                   bd=2, relief='ridge',
+                                   fg=self.industrial_colors['primary_bg'])
+        tray_frame.pack(fill='both', expand=True, padx=15, pady=8)
 
         # 第一行：托盘编号和托盘装载货物数量
-        row1_frame = tk.Frame(tray_frame, bg='white')
-        row1_frame.grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=8)  # 减小行距
+        row1_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
+        row1_frame.grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=8)
 
         # 托盘编号
         tk.Label(row1_frame, text="托盘编号:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.tray_id_entry = tk.Entry(row1_frame, width=30, font=("微软雅黑", 10),
-                                      relief='solid', bd=1)
+                                      relief='solid', bd=1, bg='white')
         self.tray_id_entry.insert(0, "TRAY-2024-001")
         self.tray_id_entry.pack(side='left', padx=(0, 40))
 
         # 托盘装载货物数量
         tk.Label(row1_frame, text="托盘装载货物数量:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.tray_load_entry = tk.Entry(row1_frame, width=15, font=("微软雅黑", 10),
-                                        relief='solid', bd=1)
+                                        relief='solid', bd=1, bg='white')
         self.tray_load_entry.insert(0, "32")
         self.tray_load_entry.pack(side='left')
 
         # 第二行：取标内容
-        row2_frame = tk.Frame(tray_frame, bg='white')
-        row2_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', padx=10, pady=8)  # 减小行距
+        row2_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
+        row2_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', padx=10, pady=8)
         tray_frame.rowconfigure(1, weight=1)  # 设置行权重
 
         tk.Label(row2_frame, text="取标内容:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(anchor='w', pady=(0, 3))  # 减小行距
-        self.fetch_text = tk.Text(row2_frame, height=8, width=120, font=("微软雅黑", 10),
-                                  relief='solid', bd=1, wrap='word')
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(anchor='w', pady=(0, 3))
+
+        # 创建带边框的文本区域
+        text_frame = tk.Frame(row2_frame, bg=self.industrial_colors['border'], bd=1, relief='sunken')
+        text_frame.pack(fill='both', expand=True)
+
+        self.fetch_text = tk.Text(text_frame, height=8, width=120, font=("Consolas", 9),
+                                  relief='flat', bd=0, wrap='word', bg='white')
+        scrollbar = tk.Scrollbar(text_frame, command=self.fetch_text.yview)
+        self.fetch_text.config(yscrollcommand=scrollbar.set)
+
+        self.fetch_text.pack(side='left', fill='both', expand=True, padx=1, pady=1)
+        scrollbar.pack(side='right', fill='y')
+
         self.fetch_text.insert("1.0", "")
-        self.fetch_text.pack(fill='both', expand=True)
 
         # 控制按钮区域
-        control_frame = tk.Frame(tray_frame, bg='white')
-        control_frame.grid(row=2, column=0, columnspan=2, sticky='e', padx=10, pady=5)  # 减小行距
+        control_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
+        control_frame.grid(row=2, column=0, columnspan=2, sticky='e', padx=10, pady=5)
 
-        # 清空显示按钮
+        # 清空显示按钮 - 工业风格
         self.clear_button = tk.Button(control_frame, text="清空显示",
-                                      font=("微软雅黑", 9), bg='#95a5a6', fg='black',
-                                      width=10, height=1,
+                                      font=("微软雅黑", 9),
+                                      bg=self.industrial_colors['secondary_bg'],
+                                      fg=self.industrial_colors['text_light'],
+                                      activebackground=self.industrial_colors['secondary_bg'],
+                                      activeforeground=self.industrial_colors['text_light'],
+                                      width=10, height=1, bd=2, relief='raised',
                                       command=self.clear_display)
         self.clear_button.pack(side='right', padx=5)
 
-        # 导出数据按钮
+        # 导出数据按钮 - 工业风格
         self.export_button = tk.Button(control_frame, text="导出数据",
-                                       font=("微软雅黑", 9), bg='#3498db', fg='black',
-                                       width=10, height=1,
+                                       font=("微软雅黑", 9),
+                                       bg=self.industrial_colors['accent'],
+                                       fg=self.industrial_colors['text_light'],
+                                       activebackground=self.industrial_colors['accent'],
+                                       activeforeground=self.industrial_colors['text_light'],
+                                       width=10, height=1, bd=2, relief='raised',
                                        command=self.export_tag_data)
         self.export_button.pack(side='right', padx=5)
 
     def create_socket_section(self):
-        """创建RFID读写器连接控制区域（放在最下方）"""
+        """创建RFID读写器连接控制区域（放在最下方）- 工业风格优化"""
         socket_frame = tk.LabelFrame(self.root, text="RFID读写器连接设置",
                                      font=("微软雅黑", 11, "bold"),
-                                     bg='white', bd=2, relief='groove',
-                                     fg='#2c3e50')
-        socket_frame.pack(fill='x', padx=15, pady=5)  # 减小行距
+                                     bg=self.industrial_colors['panel_bg'],
+                                     bd=2, relief='ridge',
+                                     fg=self.industrial_colors['primary_bg'])
+        socket_frame.pack(fill='x', padx=15, pady=8)
 
         # 服务器配置
-        config_frame = tk.Frame(socket_frame, bg='white')
-        config_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        config_frame = tk.Frame(socket_frame, bg=self.industrial_colors['panel_bg'])
+        config_frame.pack(fill='x', padx=10, pady=5)
 
         tk.Label(config_frame, text="RFID读写器地址:", font=("微软雅黑", 9, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
 
         self.host_entry = tk.Entry(config_frame, width=15, font=("微软雅黑", 9),
-                                   relief='solid', bd=1)
+                                   relief='solid', bd=1, bg='white')
         self.host_entry.insert(0, "192.168.1.200")
         self.host_entry.pack(side='left', padx=(0, 15))
 
         tk.Label(config_frame, text="端口号:", font=("微软雅黑", 9, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
 
         self.port_entry = tk.Entry(config_frame, width=8, font=("微软雅黑", 9),
-                                   relief='solid', bd=1)
+                                   relief='solid', bd=1, bg='white')
         self.port_entry.insert(0, "2000")
         self.port_entry.pack(side='left', padx=(0, 20))
 
         # 连接状态和控制按钮
-        status_frame = tk.Frame(socket_frame, bg='white')
-        status_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        status_frame = tk.Frame(socket_frame, bg=self.industrial_colors['panel_bg'])
+        status_frame.pack(fill='x', padx=10, pady=8)
 
         tk.Label(status_frame, text="连接状态:", font=("微软雅黑", 10, "bold"),
-                 bg='white').pack(side='left', padx=(0, 5))
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
 
         self.socket_status_label = tk.Label(status_frame, text="未连接",
                                             font=("微软雅黑", 10, "bold"),
-                                            bg='white', fg='#e74c3c')
+                                            bg=self.industrial_colors['panel_bg'],
+                                            fg=self.industrial_colors['danger'])
         self.socket_status_label.pack(side='left', padx=(0, 30))
 
         # 连接控制按钮
-        button_frame = tk.Frame(status_frame, bg='white')
+        button_frame = tk.Frame(status_frame, bg=self.industrial_colors['panel_bg'])
         button_frame.pack(side='right')
 
+        # 连接按钮 - 工业风格
         self.connect_button = tk.Button(button_frame, text="连接RFID读写器",
-                                        font=("微软雅黑", 9), bg='#3498db', fg='black',
-                                        width=15, height=1,
+                                        font=("微软雅黑", 9),
+                                        bg=self.industrial_colors['accent'],
+                                        fg=self.industrial_colors['text_light'],
+                                        activebackground=self.industrial_colors['accent'],
+                                        activeforeground=self.industrial_colors['text_light'],
+                                        width=15, height=1, bd=2, relief='raised',
                                         command=self.connect_rfid)
         self.connect_button.pack(side='left', padx=(0, 10))
 
+        # 断开按钮 - 工业风格
         self.disconnect_button = tk.Button(button_frame, text="断开连接",
-                                           font=("微软雅黑", 9), bg='#95a5a6', fg='black',
-                                           width=12, height=1,
+                                           font=("微软雅黑", 9),
+                                           bg=self.industrial_colors['secondary_bg'],
+                                           fg=self.industrial_colors['text_light'],
+                                           activebackground=self.industrial_colors['secondary_bg'],
+                                           activeforeground=self.industrial_colors['text_light'],
+                                           width=12, height=1, bd=2, relief='raised',
                                            command=self.disconnect_rfid,
                                            state='disabled')
         self.disconnect_button.pack(side='left')
 
         # 消息显示区域
-        msg_frame = tk.Frame(socket_frame, bg='white')
-        msg_frame.pack(fill='x', padx=10, pady=5)  # 减小行距
+        msg_frame = tk.Frame(socket_frame, bg=self.industrial_colors['panel_bg'])
+        msg_frame.pack(fill='x', padx=10, pady=5)
 
         tk.Label(msg_frame, text="通信日志:", font=("微软雅黑", 9, "bold"),
-                 bg='white').pack(anchor='w')
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(anchor='w')
 
-        msg_text_frame = tk.Frame(msg_frame, bg='white')
-        msg_text_frame.pack(fill='x', pady=3)  # 减小行距
+        # 创建带边框的消息文本区域
+        msg_text_frame = tk.Frame(msg_frame, bg=self.industrial_colors['border'], bd=1, relief='sunken')
+        msg_text_frame.pack(fill='x', pady=3)
 
         self.message_text = tk.Text(msg_text_frame, height=4, font=("Consolas", 8),
-                                    relief='solid', bd=1, wrap='word')
+                                    relief='flat', bd=0, wrap='word', bg='white')
         scrollbar = tk.Scrollbar(msg_text_frame, command=self.message_text.yview)
         self.message_text.config(yscrollcommand=scrollbar.set)
 
-        self.message_text.pack(side='left', fill='x', expand=True)
+        self.message_text.pack(side='left', fill='x', expand=True, padx=1, pady=1)
         scrollbar.pack(side='right', fill='y')
 
         self.message_text.config(state='disabled')
@@ -360,12 +457,6 @@ class RFIDProductionSystem:
         """切换产线运行状态 - 主要修改部分"""
         self.is_running = not self.is_running
         if self.is_running:
-            # self.run_button.config(text="停止产线", bg='#f39c12')
-            # self.normal_status.config(fg='#27ae60')
-            # self.abnormal_status.config(fg='#bdc3c7')
-            # self.error_label.config(text="运行中", fg='#27ae60')
-            # self.add_message("产线开始运行")
-
             # 发送开始生产指令到RFID读写器
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
@@ -375,29 +466,13 @@ class RFIDProductionSystem:
             else:
                 self.add_message("RFID读写器未连接，无法发送指令")
 
-        # else:
-        #     self.run_button.config(text="运行产线", bg='#27ae60')
-        #     self.normal_status.config(fg='#bdc3c7')
-        #     self.abnormal_status.config(fg='#bdc3c7')
-        #     self.error_label.config(text="已停止", fg='#95a5a6')
-        #     self.add_message("产线已停止")
-        #
-        #     # 发送停止生产指令到RFID读写器
-        #     if self.rfid_reader.get_connection_status():
-        #         if self.rfid_reader.send_single_cmd('PRODUCTION_STOP'):
-        #             self.add_message("发送停止生产指令成功")
-        #         else:
-        #             self.add_message("发送停止生产指令失败")
-        #     else:
-        #         self.add_message("RFID读写器未连接，无法发送指令")
-
     def emergency_stop(self):
         """紧急制动"""
         self.is_running = False
-        self.run_button.config(text="运行产线", bg='#27ae60')
-        self.normal_status.config(fg='#bdc3c7')
-        self.abnormal_status.config(fg='#e74c3c')
-        self.error_label.config(text="紧急制动！", fg='#e74c3c')
+        self.run_button.config(text="运行产线", bg=self.industrial_colors['success'])
+        self.normal_status.config(fg=self.industrial_colors['border'])
+        self.abnormal_status.config(fg=self.industrial_colors['danger'])
+        self.error_label.config(text="紧急制动！", fg=self.industrial_colors['danger'])
         self.add_message("紧急制动！系统已停止")
 
         # 发送紧急停止指令到RFID读写器
@@ -429,7 +504,6 @@ class RFIDProductionSystem:
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
                     self.add_message("发送紧急停止指令成功")
-                    # self.report_rfid_tags_via_mqtt()
                 else:
                     self.add_message("发送紧急停止指令失败")
             else:
@@ -510,15 +584,15 @@ class RFIDProductionSystem:
 
         def update_ui():
             if connected:
-                self.socket_status_label.config(text="● 已连接", fg='#27ae60')
+                self.socket_status_label.config(text="● 已连接", fg=self.industrial_colors['success'])
                 self.connect_button.config(state='disabled', text="已连接")
-                self.disconnect_button.config(state='normal', bg='#e74c3c')
+                self.disconnect_button.config(state='normal', bg=self.industrial_colors['danger'])
                 self.host_entry.config(state='disabled')
                 self.port_entry.config(state='disabled')
             else:
-                self.socket_status_label.config(text="● 未连接", fg='#e74c3c')
+                self.socket_status_label.config(text="● 未连接", fg=self.industrial_colors['danger'])
                 self.connect_button.config(state='normal', text="连接RFID读写器")
-                self.disconnect_button.config(state='disabled', bg='#95a5a6')
+                self.disconnect_button.config(state='disabled', bg=self.industrial_colors['secondary_bg'])
                 self.host_entry.config(state='normal')
                 self.port_entry.config(state='normal')
 
@@ -539,7 +613,6 @@ class RFIDProductionSystem:
 
     def process_rfid_data(self, data: bytes):
         """处理RFID二进制数据"""
-        # print('process_rfid_data')
         # 根据你的协议解析数据并更新界面
         if len(data) >= 8:
             # 示例解析逻辑
@@ -600,25 +673,25 @@ class RFIDProductionSystem:
         if 'line_status' in status_data:
             status = status_data['line_status']
             if status == 'normal':
-                self.normal_status.config(fg='#27ae60')
-                self.abnormal_status.config(fg='#bdc3c7')
+                self.normal_status.config(fg=self.industrial_colors['success'])
+                self.abnormal_status.config(fg=self.industrial_colors['border'])
                 if not self.is_running:
                     self.is_running = True
-                    self.run_button.config(text="停止产线", bg='#f39c12')
+                    self.run_button.config(text="停止产线", bg=self.industrial_colors['warning'])
             else:
-                self.normal_status.config(fg='#bdc3c7')
-                self.abnormal_status.config(fg='#e74c3c')
+                self.normal_status.config(fg=self.industrial_colors['border'])
+                self.abnormal_status.config(fg=self.industrial_colors['danger'])
                 if self.is_running:
                     self.is_running = False
-                    self.run_button.config(text="运行产线", bg='#27ae60')
+                    self.run_button.config(text="运行产线", bg=self.industrial_colors['success'])
 
         if 'error_message' in status_data:
             self.error_message = status_data['error_message']
             self.error_label.config(text=self.error_message)
             if status_data['error_message'] != "无异常":
-                self.error_label.config(fg='#e74c3c')
+                self.error_label.config(fg=self.industrial_colors['danger'])
             else:
-                self.error_label.config(fg='#27ae60')
+                self.error_label.config(fg=self.industrial_colors['success'])
 
         self.add_message("设备状态已更新")
 
@@ -633,10 +706,6 @@ class RFIDProductionSystem:
         if 'fetch_content' in rfid_data:
             self.fetch_text.delete('1.0', tk.END)
             self.fetch_text.insert('1.0', rfid_data['fetch_content'])
-
-        # if 'after_content' in rfid_data:
-        #     self.after_text.delete('1.0', tk.END)
-        #     self.after_text.insert('1.0', rfid_data['after_content'])
 
         if 'load_count' in rfid_data:
             self.tray_load_entry.delete(0, tk.END)
@@ -664,24 +733,15 @@ class RFIDProductionSystem:
 
         if success:
             self.current_tag = tag
-            # 添加到历史记录
-            # self.tag_history.append(tag)
-            # # 限制历史记录大小
-            # if len(self.tag_history) > self.max_history_size:
-            #     self.tag_history.pop(0)
 
         return tag
 
     def update_rfid_data(self, data: bytes):
         """根据二进制数据更新RFID数据（TID去重）"""
-        # print('update_rfid_data')
         # 使用RFIDTag类解析数据
         tag = self.process_rfid_data_epc_tid_user(data)
 
         if tag.success:
-            # 调试：打印TID值
-            # print(f"解析到的TID: '{tag.tid}'")
-            # print(f"历史记录中的TID数量: {len(self.tag_history)}")
             # 检查TID是否已存在
             tid_exists = any(existing_tag.tid == tag.tid for existing_tag in self.tag_history)
 
@@ -936,6 +996,7 @@ class RFIDProductionSystem:
 
     def _on_mqtt_connect(self, client, userdata, flags, rc):
         """MQTT连接回调"""
+
         def update_ui():
             if rc == 0:
                 self.add_message("MQTT连接成功")
@@ -968,16 +1029,6 @@ class RFIDProductionSystem:
                 message = msg.payload.decode('utf-8')
                 self.add_message(f"收到MQTT消息: 主题={msg.topic}, 内容={message}")
 
-                # 根据主题类型处理消息
-                # if msg.topic == self.mqtt_client.data_topic:
-                #     self.handle_mqtt_data_message(message)
-                # elif msg.topic == self.mqtt_client.response_topic:
-                #     self.handle_mqtt_response_message(message)
-                # elif msg.topic == self.mqtt_client.command_topic:
-                #     self.handle_mqtt_command_message(message)
-                # else:
-                #     self.add_message(f"未知MQTT主题: {msg.topic}")
-
             except Exception as e:
                 self.add_message(f"处理MQTT消息出错: {e}")
 
@@ -1002,8 +1053,6 @@ class RFIDProductionSystem:
     def send_mqtt_command(self, command_type, data_type, data=None):
         """发送MQTT命令"""
         print('send_mqtt_command')
-        # print(f"mqtt_client: {hasattr(self, 'mqtt_client')}")
-        # print(f"connected: {self.mqtt_client.connected}")
         if not hasattr(self, 'mqtt_client') or not self.mqtt_client.connected:
             self.add_message("MQTT客户端未连接，无法发送命令")
             return False
@@ -1032,10 +1081,8 @@ class RFIDProductionSystem:
         if self.tag_history:
             # 可以发送最近的标签信息
             recent_tags = self.tag_history[:]  # 发送最近10个标签
-            # print(f"取出列表长度: {len(recent_tags)}")
             tag_data = []
             for tag in recent_tags:
-                # print(f"tag状态: {tag.success}")
                 if tag.success:
                     tag_data.append({
                         'epc': tag.epc,
@@ -1054,6 +1101,7 @@ class RFIDProductionSystem:
 
     def start_serial_communication(self):
         """启动串口通信（在UI线程中安全调用）"""
+
         def connect_serial():
             if self.setup_serial_communication():
                 self.add_message("串口通信启动成功")
@@ -1296,6 +1344,7 @@ class RFIDProductionSystem:
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""
+
         def update_ui():
             try:
                 # 将字节数据转换为十六进制字符串显示
@@ -1306,6 +1355,7 @@ class RFIDProductionSystem:
 
             except Exception as e:
                 self.add_message(f"处理串口数据错误: {e}")
+
         # 在UI线程中安全处理
         self.root.after(0, update_ui)
 
@@ -1336,9 +1386,6 @@ class RFIDProductionSystem:
                 register_value = (data[3] << 8) | data[4]
                 self.add_message(f"寄存器值: {register_value}")
 
-                # 可以在这里更新界面或执行其他操作
-                # self.update_serial_display(register_value)
-
         except Exception as e:
             self.add_message(f"处理寄存器响应错误: {e}")
 
@@ -1352,6 +1399,6 @@ def main():
 
     root.mainloop()
 
+
 if __name__ == "__main__":
     main()
-    
