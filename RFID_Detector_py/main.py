@@ -45,6 +45,9 @@ class RFIDProductionSystem:
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
+        # 记录软件启动时间
+        self.start_time = time.time()
+
         # 方向标志
         self.direction = 0  # 0无，1入库，2出库
         self.current_status = 0  # 存储当前光栅状态
@@ -169,15 +172,19 @@ class RFIDProductionSystem:
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['accent']).pack(side='left')
 
-        # 第三行：产线运行时间、当前托盘装载数量、今日生产总量
+        # 第三行：软件运行时间、当前托盘装载数量、今日生产总量
         row3_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
         row3_frame.pack(fill='x', padx=10, pady=5)
 
-        # 产线运行时间
-        tk.Label(row3_frame, text="产线运行时间:", font=("微软雅黑", 10, "bold"),
+        # 软件运行时间
+        tk.Label(row3_frame, text="软件运行时间:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
-        self.runtime_label = tk.Label(row3_frame, text=self.line_runtime,
+
+        # 记录软件启动时间
+        self.start_time = time.time()
+
+        self.runtime_label = tk.Label(row3_frame, text="00:00:00",
                                       font=("微软雅黑", 10, "bold"),
                                       bg=self.industrial_colors['panel_bg'],
                                       fg=self.industrial_colors['accent'])
@@ -272,6 +279,9 @@ class RFIDProductionSystem:
                                           width=12, height=1, bd=2, relief='raised',
                                           command=self.emergency_stop)
         self.emergency_button.pack(side='right', padx=10)
+
+        # 启动软件运行时间更新
+        self.update_software_runtime()
 
     def create_rfid_info_section(self):
         """创建RFID信息区域（放在中间）- 工业风格优化"""
@@ -1388,6 +1398,22 @@ class RFIDProductionSystem:
 
         except Exception as e:
             self.add_message(f"处理寄存器响应错误: {e}")
+
+    def update_software_runtime(self):
+        """更新软件运行时间"""
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time
+
+        # 将运行时间转换为时:分:秒格式
+        hours = int(elapsed_time // 3600)
+        minutes = int((elapsed_time % 3600) // 60)
+        seconds = int(elapsed_time % 60)
+
+        runtime_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        self.runtime_label.config(text=runtime_str)
+
+        # 每秒更新一次
+        self.root.after(1000, self.update_software_runtime)
 
 
 def main():
