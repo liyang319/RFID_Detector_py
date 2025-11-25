@@ -18,7 +18,7 @@ DATA_TYPE_OUTBOUND = "outbound"
 class RFIDProductionSystem:
     def __init__(self, root):
         self.root = root
-        self.root.title("RFID检测系统")
+        self.root.title("RFID标签识别系统")
         self.root.geometry("1000x800")
 
         # 工业风格配色方案
@@ -62,6 +62,7 @@ class RFIDProductionSystem:
         # RFID读写器（替换原来的SocketClient）
         self.rfid_reader = RFIDReader_CNNT('192.168.1.200', 2000)
         self.setup_rfid_callbacks()
+        self.device_id = "RFID-DETECTOR-001"
 
         # MQTT客户端（新增）
         self.mqtt_client = MqttClient(
@@ -69,7 +70,7 @@ class RFIDProductionSystem:
             port=1883,
             username='None',  # 根据实际情况修改
             password='None',  # 根据实际情况修改
-            client_id='detector_001'
+            client_id=self.device_id
         )
         self.setup_mqtt_callbacks()
 
@@ -103,7 +104,7 @@ class RFIDProductionSystem:
         title_frame.pack(fill='x', padx=5, pady=5)
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(title_frame, text="RFID检测系统",
+        title_label = tk.Label(title_frame, text="RFID标签识别系统",
                                font=("微软雅黑", 20, "bold"),
                                bg=self.industrial_colors['primary_bg'],
                                fg=self.industrial_colors['text_light'])
@@ -131,7 +132,7 @@ class RFIDProductionSystem:
         tk.Label(row1_frame, text="设备号:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
-        tk.Label(row1_frame, text="RFID-PROD-001", font=("微软雅黑", 10, "bold"),
+        tk.Label(row1_frame, text=self.device_id, font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['accent']).pack(side='left', padx=(0, 40))
 
@@ -141,14 +142,14 @@ class RFIDProductionSystem:
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.station_entry = tk.Entry(row1_frame, width=20, font=("微软雅黑", 10),
                                       relief='solid', bd=1, bg='white')
-        self.station_entry.insert(0, "检测工位01")
+        self.station_entry.insert(0, "通道机-001")
         self.station_entry.pack(side='left', padx=(0, 40))
 
         # 软件版本（移到第一行右边）
         tk.Label(row1_frame, text="软件版本:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
-        tk.Label(row1_frame, text="v2.0.1", font=("微软雅黑", 10, "bold"),
+        tk.Label(row1_frame, text="v1.0.0", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['accent']).pack(side='left')
 
@@ -190,7 +191,7 @@ class RFIDProductionSystem:
         self.runtime_label.pack(side='left', padx=(0, 20))
 
         # 当前托盘装载数量
-        tk.Label(row3_frame, text="当前托盘装载数量:", font=("微软雅黑", 10, "bold"),
+        tk.Label(row3_frame, text="当前识别数量:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.current_load_label = tk.Label(row3_frame, text=str(self.current_load),
@@ -200,7 +201,7 @@ class RFIDProductionSystem:
         self.current_load_label.pack(side='left', padx=(0, 20))
 
         # 今日生产总量
-        tk.Label(row3_frame, text="今日生产总量:", font=("微软雅黑", 10, "bold"),
+        tk.Label(row3_frame, text="识别总量:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
         self.daily_label = tk.Label(row3_frame, text=str(self.daily_production),
