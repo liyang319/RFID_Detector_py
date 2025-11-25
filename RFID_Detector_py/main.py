@@ -792,9 +792,9 @@ class RFIDProductionSystem:
                 self.current_load = len(self.tag_history)
                 self.current_load_label.config(text=str(self.current_load))
 
-                # 更新今日生产总量
-                self.daily_production += 1
-                self.daily_label.config(text=str(self.daily_production))
+                # 关键修改：移除对每日生产总量的直接更新，只在完成出入库时更新
+                # self.daily_production += 1
+                # self.daily_label.config(text=str(self.daily_production))
 
                 # 更新界面显示
                 display_text = self._format_tag_list_display(tag)
@@ -1114,7 +1114,7 @@ class RFIDProductionSystem:
         print(f"当前列表长度: {len(self.tag_history)}")
         if self.tag_history:
             # 可以发送最近的标签信息
-            recent_tags = self.tag_history[:]  # 发送最近10个标签
+            recent_tags = self.tag_history[:]  # 发送所有标签
             tag_data = []
             for tag in recent_tags:
                 if tag.success:
@@ -1135,8 +1135,13 @@ class RFIDProductionSystem:
                     self.outbound_total += len(tag_data)
                     self.outbound_label.config(text=str(self.outbound_total))
 
-                return self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
-                self.tag_history.clear()
+                # 关键修改：更新识别总量为入库总量和出库总量之和
+                self.daily_production = self.inbound_total + self.outbound_total
+                self.daily_label.config(text=str(self.daily_production))
+
+                result = self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
+                self.tag_history.clear()  # 报告后清空历史记录
+                return result
         else:
             self.add_message("没有可报告的RFID标签数据")
             return False
@@ -1268,6 +1273,7 @@ class RFIDProductionSystem:
                                     # 防重复报告
                                     current_time = time.time()
                                     if current_time - last_report_time >= report_cooldown:
+                                        # 关键修改：只有在完成入库时才累积到识别总量
                                         self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND)
                                         last_report_time = current_time
                                         print("入库完成")
@@ -1321,6 +1327,7 @@ class RFIDProductionSystem:
                                     # 防重复报告
                                     current_time = time.time()
                                     if current_time - last_report_time >= report_cooldown:
+                                        # 关键修改：只有在完成出库时才累积到识别总量
                                         self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND)
                                         last_report_time = current_time
                                         print("出库完成")
@@ -1344,12 +1351,14 @@ class RFIDProductionSystem:
                                         # 这是允许的路径2，不重置状态
                                         print(f"允许的路径2：状态{current_state}检测到无遮挡")
                                     else:
-                                        # 其他情况重置状态
-                                        print(f"异常中断：状态{current_state}检测到无遮挡")
+                                        # 其他情况重置状态，并且不累积识别总量
+                                        print(f"异常中断：状态{current_state}检测到无遮挡，不累积识别总量")
                                         self.start_rfid_loop_query(False)
                                         current_state = STATE_IDLE
                                         self.direction = 0
                                         process_start_time = None
+                                        # 关键修改：中断时不报告标签，不累积到识别总量
+                                        self.tag_history.clear()  # 清空本次未完成的标签记录
 
                             # 如果状态发生变化，更新状态变化时间
                             if old_state != current_state:
@@ -1369,7 +1378,9 @@ class RFIDProductionSystem:
                             current_state = STATE_IDLE
                             self.direction = 0
                             process_start_time = None
-                            print("系统已重置：超时保护")
+                            # 关键修改：超时时清空未完成的标签记录，不累积到识别总量
+                            self.tag_history.clear()
+                            print("系统已重置：超时保护，不累积识别总量")
 
                     # 控制读取间隔
                     elapsed = time.time() - start_time
