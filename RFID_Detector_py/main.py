@@ -239,12 +239,12 @@ class RFIDProductionSystem:
         self.abnormal_status.pack(side='left', padx=(0, 10))
 
         # 右侧运行产线按钮 - 工业风格按钮
-        self.run_button = tk.Button(row4_frame, text="运行产线",
+        self.run_button = tk.Button(row4_frame, text="手动运行",
                                     font=("微软雅黑", 11, "bold"),
                                     bg=self.industrial_colors['success'],
-                                    fg=self.industrial_colors['text_light'],
+                                    fg=self.industrial_colors['text_dark'],
                                     activebackground=self.industrial_colors['success'],
-                                    activeforeground=self.industrial_colors['text_light'],
+                                    activeforeground=self.industrial_colors['text_dark'],
                                     width=12, height=1, bd=2, relief='raised',
                                     command=self.toggle_production)
         self.run_button.pack(side='right', padx=10)
@@ -270,12 +270,12 @@ class RFIDProductionSystem:
         self.error_label.pack(side='left')
 
         # 右侧紧急制动按钮 - 工业风格按钮
-        self.emergency_button = tk.Button(row5_frame, text="紧急制动",
+        self.emergency_button = tk.Button(row5_frame, text="手动停止",
                                           font=("微软雅黑", 11, "bold"),
                                           bg=self.industrial_colors['danger'],
-                                          fg=self.industrial_colors['text_light'],
+                                          fg=self.industrial_colors['text_dark'],
                                           activebackground=self.industrial_colors['danger'],
-                                          activeforeground=self.industrial_colors['text_light'],
+                                          activeforeground=self.industrial_colors['text_dark'],
                                           width=12, height=1, bd=2, relief='raised',
                                           command=self.emergency_stop)
         self.emergency_button.pack(side='right', padx=10)
@@ -345,9 +345,9 @@ class RFIDProductionSystem:
         self.clear_button = tk.Button(control_frame, text="清空显示",
                                       font=("微软雅黑", 9),
                                       bg=self.industrial_colors['secondary_bg'],
-                                      fg=self.industrial_colors['text_light'],
+                                      fg=self.industrial_colors['text_dark'],
                                       activebackground=self.industrial_colors['secondary_bg'],
-                                      activeforeground=self.industrial_colors['text_light'],
+                                      activeforeground=self.industrial_colors['text_dark'],
                                       width=10, height=1, bd=2, relief='raised',
                                       command=self.clear_display)
         self.clear_button.pack(side='right', padx=5)
@@ -356,9 +356,9 @@ class RFIDProductionSystem:
         self.export_button = tk.Button(control_frame, text="导出数据",
                                        font=("微软雅黑", 9),
                                        bg=self.industrial_colors['accent'],
-                                       fg=self.industrial_colors['text_light'],
+                                       fg=self.industrial_colors['text_dark'],
                                        activebackground=self.industrial_colors['accent'],
-                                       activeforeground=self.industrial_colors['text_light'],
+                                       activeforeground=self.industrial_colors['text_dark'],
                                        width=10, height=1, bd=2, relief='raised',
                                        command=self.export_tag_data)
         self.export_button.pack(side='right', padx=5)
@@ -416,9 +416,9 @@ class RFIDProductionSystem:
         self.connect_button = tk.Button(button_frame, text="连接RFID读写器",
                                         font=("微软雅黑", 9),
                                         bg=self.industrial_colors['accent'],
-                                        fg=self.industrial_colors['text_light'],
+                                        fg=self.industrial_colors['text_dark'],
                                         activebackground=self.industrial_colors['accent'],
-                                        activeforeground=self.industrial_colors['text_light'],
+                                        activeforeground=self.industrial_colors['text_dark'],
                                         width=15, height=1, bd=2, relief='raised',
                                         command=self.connect_rfid)
         self.connect_button.pack(side='left', padx=(0, 10))
@@ -427,9 +427,9 @@ class RFIDProductionSystem:
         self.disconnect_button = tk.Button(button_frame, text="断开连接",
                                            font=("微软雅黑", 9),
                                            bg=self.industrial_colors['secondary_bg'],
-                                           fg=self.industrial_colors['text_light'],
+                                           fg=self.industrial_colors['text_dark'],
                                            activebackground=self.industrial_colors['secondary_bg'],
-                                           activeforeground=self.industrial_colors['text_light'],
+                                           activeforeground=self.industrial_colors['text_dark'],
                                            width=12, height=1, bd=2, relief='raised',
                                            command=self.disconnect_rfid,
                                            state='disabled')
@@ -479,11 +479,11 @@ class RFIDProductionSystem:
     def emergency_stop(self):
         """紧急制动"""
         self.is_running = False
-        self.run_button.config(text="运行产线", bg=self.industrial_colors['success'])
-        self.normal_status.config(fg=self.industrial_colors['border'])
-        self.abnormal_status.config(fg=self.industrial_colors['danger'])
-        self.error_label.config(text="紧急制动！", fg=self.industrial_colors['danger'])
-        self.add_message("紧急制动！系统已停止")
+        # self.run_button.config(text="手动运行", bg=self.industrial_colors['success'])
+        # self.normal_status.config(fg=self.industrial_colors['border'])
+        # self.abnormal_status.config(fg=self.industrial_colors['danger'])
+        # self.error_label.config(text="紧急制动！", fg=self.industrial_colors['danger'])
+        # self.add_message("紧急制动！系统已停止")
 
         # 发送紧急停止指令到RFID读写器
         if self.rfid_reader.get_connection_status():
@@ -495,7 +495,7 @@ class RFIDProductionSystem:
         else:
             self.add_message("RFID读写器未连接，无法发送指令")
 
-        messagebox.showwarning("紧急制动", "系统已紧急停止！")
+        messagebox.showwarning("手动停止", "数据已经上报！")
 
     def start_rfid_loop_query(self, b_on):
         print(f"start_rfid_loop_query  === {b_on}")
@@ -687,13 +687,13 @@ class RFIDProductionSystem:
                 self.abnormal_status.config(fg=self.industrial_colors['border'])
                 if not self.is_running:
                     self.is_running = True
-                    self.run_button.config(text="停止产线", bg=self.industrial_colors['warning'])
+                    self.run_button.config(text="手动停止", bg=self.industrial_colors['warning'])
             else:
                 self.normal_status.config(fg=self.industrial_colors['border'])
                 self.abnormal_status.config(fg=self.industrial_colors['danger'])
                 if self.is_running:
                     self.is_running = False
-                    self.run_button.config(text="运行产线", bg=self.industrial_colors['success'])
+                    self.run_button.config(text="手动运行", bg=self.industrial_colors['success'])
 
         if 'error_message' in status_data:
             self.error_message = status_data['error_message']
