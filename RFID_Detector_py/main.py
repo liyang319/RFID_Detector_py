@@ -42,6 +42,8 @@ class RFIDProductionSystem:
         self.is_running = False
         self.current_load = 0
         self.daily_production = 0
+        self.inbound_total = 0  # 新增：入库总量
+        self.outbound_total = 0  # 新增：出库总量
         self.line_runtime = "20时10分"
         self.error_message = "无异常"
 
@@ -121,7 +123,7 @@ class RFIDProductionSystem:
                                         fg=self.industrial_colors['primary_bg'])
         dashboard_frame.pack(fill='x', padx=15, pady=8)
 
-        # 第一行：设备号和工位名称
+        # 第一行：设备号、工位名称和软件版本
         row1_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
         row1_frame.pack(fill='x', padx=10, pady=5)
 
@@ -140,9 +142,17 @@ class RFIDProductionSystem:
         self.station_entry = tk.Entry(row1_frame, width=20, font=("微软雅黑", 10),
                                       relief='solid', bd=1, bg='white')
         self.station_entry.insert(0, "检测工位01")
-        self.station_entry.pack(side='left')
+        self.station_entry.pack(side='left', padx=(0, 40))
 
-        # 第二行：当前位置、当前时间、软件版本
+        # 软件版本（移到第一行右边）
+        tk.Label(row1_frame, text="软件版本:", font=("微软雅黑", 10, "bold"),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
+        tk.Label(row1_frame, text="v2.0.1", font=("微软雅黑", 10, "bold"),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['accent']).pack(side='left')
+
+        # 第二行：当前位置、当前时间
         row2_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
         row2_frame.pack(fill='x', padx=10, pady=5)
 
@@ -162,17 +172,9 @@ class RFIDProductionSystem:
         self.time_label = tk.Label(row2_frame, text="", font=("微软雅黑", 10),
                                    bg=self.industrial_colors['panel_bg'],
                                    fg=self.industrial_colors['text_dark'])
-        self.time_label.pack(side='left', padx=(0, 40))
+        self.time_label.pack(side='left')
 
-        # 软件版本
-        tk.Label(row2_frame, text="软件版本:", font=("微软雅黑", 10, "bold"),
-                 bg=self.industrial_colors['panel_bg'],
-                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
-        tk.Label(row2_frame, text="v2.0.1", font=("微软雅黑", 10, "bold"),
-                 bg=self.industrial_colors['panel_bg'],
-                 fg=self.industrial_colors['accent']).pack(side='left')
-
-        # 第三行：软件运行时间、当前托盘装载数量、今日生产总量
+        # 第三行：软件运行时间、当前托盘装载数量、今日生产总量、入库总量、出库总量
         row3_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
         row3_frame.pack(fill='x', padx=10, pady=5)
 
@@ -181,14 +183,11 @@ class RFIDProductionSystem:
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
 
-        # 记录软件启动时间
-        self.start_time = time.time()
-
         self.runtime_label = tk.Label(row3_frame, text="00:00:00",
                                       font=("微软雅黑", 10, "bold"),
                                       bg=self.industrial_colors['panel_bg'],
                                       fg=self.industrial_colors['accent'])
-        self.runtime_label.pack(side='left', padx=(0, 40))
+        self.runtime_label.pack(side='left', padx=(0, 20))
 
         # 当前托盘装载数量
         tk.Label(row3_frame, text="当前托盘装载数量:", font=("微软雅黑", 10, "bold"),
@@ -198,7 +197,7 @@ class RFIDProductionSystem:
                                            font=("微软雅黑", 10, "bold"),
                                            bg=self.industrial_colors['panel_bg'],
                                            fg=self.industrial_colors['accent'])
-        self.current_load_label.pack(side='left', padx=(0, 40))
+        self.current_load_label.pack(side='left', padx=(0, 20))
 
         # 今日生产总量
         tk.Label(row3_frame, text="今日生产总量:", font=("微软雅黑", 10, "bold"),
@@ -208,7 +207,27 @@ class RFIDProductionSystem:
                                     font=("微软雅黑", 10, "bold"),
                                     bg=self.industrial_colors['panel_bg'],
                                     fg=self.industrial_colors['accent'])
-        self.daily_label.pack(side='left')
+        self.daily_label.pack(side='left', padx=(0, 20))
+
+        # 入库总量
+        tk.Label(row3_frame, text="入库总量:", font=("微软雅黑", 10, "bold"),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
+        self.inbound_label = tk.Label(row3_frame, text=str(self.inbound_total),
+                                      font=("微软雅黑", 10, "bold"),
+                                      bg=self.industrial_colors['panel_bg'],
+                                      fg=self.industrial_colors['accent'])
+        self.inbound_label.pack(side='left', padx=(0, 20))
+
+        # 出库总量
+        tk.Label(row3_frame, text="出库总量:", font=("微软雅黑", 10, "bold"),
+                 bg=self.industrial_colors['panel_bg'],
+                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
+        self.outbound_label = tk.Label(row3_frame, text=str(self.outbound_total),
+                                       font=("微软雅黑", 10, "bold"),
+                                       bg=self.industrial_colors['panel_bg'],
+                                       fg=self.industrial_colors['accent'])
+        self.outbound_label.pack(side='left')
 
         # 第四行：当前产线运行状态 + 运行产线按钮
         row4_frame = tk.Frame(dashboard_frame, bg=self.industrial_colors['panel_bg'])
@@ -292,42 +311,46 @@ class RFIDProductionSystem:
                                    fg=self.industrial_colors['primary_bg'])
         tray_frame.pack(fill='both', expand=True, padx=15, pady=8)
 
+        # 使用grid布局管理器，使内容能够更好地填充空间
+        tray_frame.columnconfigure(0, weight=1)
+        tray_frame.rowconfigure(1, weight=1)  # 第二行（文本框区域）可扩展
+
         # 第一行：托盘编号和托盘装载货物数量
         row1_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
-        row1_frame.grid(row=0, column=0, columnspan=2, sticky='w', padx=10, pady=8)
+        row1_frame.grid(row=0, column=0, sticky='ew', padx=10, pady=8)
+        row1_frame.columnconfigure(1, weight=1)  # 使托盘编号输入框可以扩展
 
         # 托盘编号
         tk.Label(row1_frame, text="托盘编号:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
-                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
-        self.tray_id_entry = tk.Entry(row1_frame, width=30, font=("微软雅黑", 10),
+                 fg=self.industrial_colors['primary_bg']).grid(row=0, column=0, sticky='w', padx=(0, 5))
+        self.tray_id_entry = tk.Entry(row1_frame, font=("微软雅黑", 10),
                                       relief='solid', bd=1, bg='white')
         self.tray_id_entry.insert(0, "TRAY-2024-001")
-        self.tray_id_entry.pack(side='left', padx=(0, 40))
+        self.tray_id_entry.grid(row=0, column=1, sticky='ew', padx=(0, 20))
 
         # 托盘装载货物数量
         tk.Label(row1_frame, text="托盘装载货物数量:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
-                 fg=self.industrial_colors['primary_bg']).pack(side='left', padx=(0, 5))
+                 fg=self.industrial_colors['primary_bg']).grid(row=0, column=2, sticky='w', padx=(0, 5))
         self.tray_load_entry = tk.Entry(row1_frame, width=15, font=("微软雅黑", 10),
                                         relief='solid', bd=1, bg='white')
         self.tray_load_entry.insert(0, "32")
-        self.tray_load_entry.pack(side='left')
+        self.tray_load_entry.grid(row=0, column=3, sticky='w')
 
         # 第二行：取标内容
         row2_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
-        row2_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', padx=10, pady=8)
-        tray_frame.rowconfigure(1, weight=1)  # 设置行权重
+        row2_frame.grid(row=1, column=0, sticky='nsew', padx=10, pady=8)
 
         tk.Label(row2_frame, text="取标内容:", font=("微软雅黑", 10, "bold"),
                  bg=self.industrial_colors['panel_bg'],
                  fg=self.industrial_colors['primary_bg']).pack(anchor='w', pady=(0, 3))
 
-        # 创建带边框的文本区域
+        # 创建带边框的文本区域 - 横向充满
         text_frame = tk.Frame(row2_frame, bg=self.industrial_colors['border'], bd=1, relief='sunken')
         text_frame.pack(fill='both', expand=True)
 
-        self.fetch_text = tk.Text(text_frame, height=8, width=120, font=("Consolas", 9),
+        self.fetch_text = tk.Text(text_frame, height=8, font=("Consolas", 9),
                                   relief='flat', bd=0, wrap='word', bg='white')
         scrollbar = tk.Scrollbar(text_frame, command=self.fetch_text.yview)
         self.fetch_text.config(yscrollcommand=scrollbar.set)
@@ -337,9 +360,9 @@ class RFIDProductionSystem:
 
         self.fetch_text.insert("1.0", "")
 
-        # 控制按钮区域
+        # 控制按钮区域 - 对齐右下角
         control_frame = tk.Frame(tray_frame, bg=self.industrial_colors['panel_bg'])
-        control_frame.grid(row=2, column=0, columnspan=2, sticky='e', padx=10, pady=5)
+        control_frame.grid(row=2, column=0, sticky='e', padx=10, pady=5)
 
         # 清空显示按钮 - 工业风格
         self.clear_button = tk.Button(control_frame, text="清空显示",
@@ -1103,6 +1126,14 @@ class RFIDProductionSystem:
                     })
 
             if tag_data:
+                # 根据数据类型更新入库或出库总量
+                if data_type == DATA_TYPE_INBOUND:
+                    self.inbound_total += len(tag_data)
+                    self.inbound_label.config(text=str(self.inbound_total))
+                elif data_type == DATA_TYPE_OUTBOUND:
+                    self.outbound_total += len(tag_data)
+                    self.outbound_label.config(text=str(self.outbound_total))
+
                 return self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
                 self.tag_history.clear()
         else:
