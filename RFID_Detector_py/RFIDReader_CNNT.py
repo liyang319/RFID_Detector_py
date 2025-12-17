@@ -14,7 +14,7 @@ from command import device_command  # 导入指令字典
 class RFIDReader_CNNT:
     """RFID读写器通信类"""
 
-    def __init__(self, host: str = '192.168.1.200', port: int = 2000):
+    def __init__(self, host: str = '192.168.3.173', port: int = 2000):
         """
         初始化RFID读写器
 
