@@ -38,6 +38,54 @@ class RFIDProductionSystem:
         self.root.configure(bg=self.industrial_colors['primary_bg'])
         self.root.resizable(True, True)
 
+        # 创建主容器
+        self.main_container = tk.Frame(self.root, bg=self.industrial_colors['primary_bg'])
+        self.main_container.pack(fill='both', expand=True)
+
+        # 创建Canvas和滚动条
+        self.canvas = tk.Canvas(self.main_container,
+                                bg=self.industrial_colors['primary_bg'],
+                                highlightthickness=0)
+        self.scrollbar = tk.Scrollbar(self.main_container,
+                                      orient="vertical",
+                                      command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas,
+                                         bg=self.industrial_colors['primary_bg'])
+
+        # 配置Canvas
+        self.canvas_window = self.canvas.create_window((0, 0),
+                                                       window=self.scrollable_frame,
+                                                       anchor="nw")
+
+        def configure_scrollregion(event):
+            """当内部frame大小变化时更新滚动区域"""
+            # 更新Canvas的滚动区域
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+            # 设置内部frame的宽度为Canvas的当前宽度
+            self.canvas.itemconfig(self.canvas_window, width=self.canvas.winfo_width())
+
+        def configure_canvas_width(event):
+            """当Canvas大小变化时调整内部frame宽度"""
+            self.canvas.itemconfig(self.canvas_window, width=event.width)
+
+        self.scrollable_frame.bind("<Configure>", configure_scrollregion)
+        self.canvas.bind("<Configure>", configure_canvas_width)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        # 鼠标滚轮支持
+        def _on_mousewheel(event):
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # 对Linux和Windows的鼠标滚轮支持
+        self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # Linux的鼠标滚轮事件
+        self.canvas.bind_all("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.canvas.bind_all("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+
+        # 布局Canvas和滚动条
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
         # 系统状态变量
         self.is_running = False
         self.current_load = 0
@@ -78,6 +126,9 @@ class RFIDProductionSystem:
         self.serial_comm = SerialComm('/dev/tty.usbserial-1410', 9600)
         self.serial_reading_active = False  # 串口读取线程状态标志
 
+        # 将scrollable_frame作为新的根窗口传递
+        self.actual_root = self.scrollable_frame
+
         # 创建界面（调整UI布局顺序）
         self.create_title_section()
         self.create_dashboard_section()  # 新增的数据看板
@@ -100,7 +151,7 @@ class RFIDProductionSystem:
 
     def create_title_section(self):
         """创建标题区域"""
-        title_frame = tk.Frame(self.root, bg=self.industrial_colors['primary_bg'], height=50)
+        title_frame = tk.Frame(self.actual_root, bg=self.industrial_colors['primary_bg'], height=50)
         title_frame.pack(fill='x', padx=5, pady=5)
         title_frame.pack_propagate(False)
 
@@ -116,7 +167,7 @@ class RFIDProductionSystem:
 
     def create_dashboard_section(self):
         """创建数据看板区域 - 工业风格优化"""
-        dashboard_frame = tk.LabelFrame(self.root, text="数据看板",
+        dashboard_frame = tk.LabelFrame(self.actual_root, text="数据看板",
                                         font=("微软雅黑", 12, "bold"),
                                         bg=self.industrial_colors['panel_bg'],
                                         bd=2,
@@ -305,7 +356,7 @@ class RFIDProductionSystem:
 
     def create_rfid_info_section(self):
         """创建RFID信息区域（放在中间）- 工业风格优化"""
-        tray_frame = tk.LabelFrame(self.root, text="标签信息",
+        tray_frame = tk.LabelFrame(self.actual_root, text="标签信息",
                                    font=("微软雅黑", 12, "bold"),
                                    bg=self.industrial_colors['panel_bg'],
                                    bd=2, relief='ridge',
@@ -389,7 +440,7 @@ class RFIDProductionSystem:
 
     def create_socket_section(self):
         """创建RFID读写器连接控制区域（放在最下方）- 工业风格优化"""
-        socket_frame = tk.LabelFrame(self.root, text="RFID读写器连接设置",
+        socket_frame = tk.LabelFrame(self.actual_root, text="RFID读写器连接设置",
                                      font=("微软雅黑", 11, "bold"),
                                      bg=self.industrial_colors['panel_bg'],
                                      bd=2, relief='ridge',
