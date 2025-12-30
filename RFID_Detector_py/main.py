@@ -1225,7 +1225,7 @@ class RFIDProductionSystem:
             return False
 
     def start_serial_reading_loop(self):
-        """启动串口读取循环（带状态确认机制）"""
+        """启动串口读取循环（带状态确认机制，支持不同确认标准）"""
 
         def read_loop():
             # 状态机定义
@@ -1251,13 +1251,21 @@ class RFIDProductionSystem:
             idle_timeout = 10.0
             process_start_time = None
 
-            # 状态确认机制
-            DETECT_COUNT = 3
+            # 状态确认机制 - 使用不同的标准
+            DETECT_ON_COUNT = 1  # 遮挡状态需要连续检测的次数
+            DETECT_OFF_COUNT = 2  # 不遮挡状态需要连续检测的次数
             current_detect_count = 0
             confirmed_status = 0
             target_status = 0
             in_confirmation = False
             last_raw_status = 0
+
+            def get_required_count(status):
+                """根据目标状态获取需要的确认次数"""
+                if status == 0x00:  # 无遮挡
+                    return DETECT_OFF_COUNT
+                else:  # 遮挡状态 (0x01, 0x02, 0x03)
+                    return DETECT_ON_COUNT
 
             while self.serial_comm.is_open():
                 try:
@@ -1276,13 +1284,17 @@ class RFIDProductionSystem:
                                 in_confirmation = True
                                 target_status = raw_status
                                 current_detect_count = 1
-                                print(f"开始状态确认: {confirmed_status:02X}->{target_status:02X}")
+                                required_count = get_required_count(target_status)
+                                print(
+                                    f"开始状态确认: {confirmed_status:02X}->{target_status:02X} 需要{required_count}次")
                             # 否则状态没变化，不处理
                         else:
                             # 确认过程中
                             if raw_status == target_status:
                                 current_detect_count += 1
-                                if current_detect_count >= DETECT_COUNT:
+                                required_count = get_required_count(target_status)
+
+                                if current_detect_count >= required_count:
                                     # 确认完成
                                     old_confirmed_status = confirmed_status
                                     confirmed_status = target_status
@@ -1429,11 +1441,13 @@ class RFIDProductionSystem:
                                 # 状态变化，重新开始确认
                                 target_status = raw_status
                                 current_detect_count = 1
-                                print(f"确认中断，重新确认: {target_status:02X}")
+                                required_count = get_required_count(target_status)
+                                print(f"确认中断，重新确认: {target_status:02X} 需要{required_count}次")
 
                         # 调试信息
-                        if in_confirmation and current_detect_count < DETECT_COUNT:
-                            print(f"状态确认中: {target_status:02X} 连续{current_detect_count}/{DETECT_COUNT}次")
+                        if in_confirmation and current_detect_count < get_required_count(target_status):
+                            required_count = get_required_count(target_status)
+                            print(f"状态确认中: {target_status:02X} 连续{current_detect_count}/{required_count}次")
 
                         self.handle_serial_data(data)
 
@@ -1466,7 +1480,7 @@ class RFIDProductionSystem:
                     time.sleep(0.5)
 
         threading.Thread(target=read_loop, daemon=True).start()
-        self.add_message("串口读取循环已启动（带状态确认机制）")
+        self.add_message("串口读取循环已启动（带状态确认机制，支持不同确认标准）")
 
     def handle_serial_data(self, data):
         """处理串口接收到的数据"""
