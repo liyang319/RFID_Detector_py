@@ -102,6 +102,12 @@ class RFIDProductionSystem:
         self.direction = 0  # 0无，1入库，2出库
         self.current_status = 0  # 存储当前光栅状态
 
+        # 灯
+        self.red_light = 0x00
+        self.yellow_light = 0x02
+        self.green_light = 0x04
+        self.beep_ctrl = 0x06
+
         # RFID标签管理
         self.current_tag = None
         self.tag_history = []
@@ -576,6 +582,8 @@ class RFIDProductionSystem:
         print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
             # 发送开始生产指令到RFID读写器
+            self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
+            self.serial_comm.write_register(self.green_light, False, timeout=0.5)
             self.tag_history.clear()
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
@@ -586,6 +594,8 @@ class RFIDProductionSystem:
                 self.add_message("RFID读写器未连接，无法发送指令")
         else:
             # 发送紧急停止指令到RFID读写器
+            self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
             if self.rfid_reader.get_connection_status():
                 if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
                     self.add_message("发送紧急停止指令成功")
@@ -1215,6 +1225,9 @@ class RFIDProductionSystem:
             if self.serial_comm.open():
                 self.add_message("串口连接成功")
                 # 直接启动串口读取循环
+                self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+                self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+                self.serial_comm.write_register(self.red_light, False, timeout=0.5)
                 self.start_serial_reading_loop()
                 return True
             else:

@@ -117,6 +117,45 @@ class SerialComm:
 
         return rx_data, len(rx_data)
 
+    def write_register(self, port, b_on, timeout=1.0):
+        print('---write_register')
+        if not self.serial_port or not self.serial_port.is_open:
+            return bytearray(), -1
+
+        start_time = time.time()
+        light_on = 0x00
+        if b_on:
+            light_on = 0xff
+        else:
+            light_on = 0x00
+
+        # 准备发送缓冲区 port 0 1 2 3 开0xff,关闭0x00
+        buffer = [0xFE, 0x05, 0x00, port, light_on, 0x00]
+        crc_value = self.crc16(buffer, 6)
+        buffer.append(crc_value & 0xFF)
+        buffer.append((crc_value >> 8) & 0xFF)
+
+        # 清空输入缓冲区，避免旧数据干扰
+        self.serial_port.reset_input_buffer()
+        print([hex(b) for b in buffer])
+        # 发送数据
+        bytes_sent = self.send(buffer)
+        if bytes_sent < 0:
+            return bytearray(), -1
+
+        # 接收数据（使用更短的超时）
+        rx_data = self.receive(100, timeout=0.3)  # 接收超时300ms
+
+        # 如果收到数据但长度不够，可能是数据还在传输中，再等待一下
+        if 0 < len(rx_data) < 8:  # 假设完整帧至少8字节
+            remaining_time = timeout - (time.time() - start_time)
+            if remaining_time > 0:
+                # 继续接收剩余数据
+                additional_data = self.receive(100 - len(rx_data), timeout=min(0.2, remaining_time))
+                rx_data.extend(additional_data)
+
+        return rx_data, len(rx_data)
+
     def crc16(self, data, length):
         """
         CRC16校验计算（对应C++的crc16方法）
