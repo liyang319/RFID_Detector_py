@@ -896,7 +896,7 @@ class RFIDProductionSystem:
                 f"TID: {tag.tid} "
                 f"USER: {tag.user_data} "
                 f"RSSI: {tag.rssi:.1f}dBm "
-                f"天线: {tag.antenna_num}\n")
+                f"天线: {tag.antenna_num}")
 
     def update_ui_with_reported_tags(self, tag_data, data_type):
         """用上报的标签数据更新UI"""
@@ -926,12 +926,10 @@ class RFIDProductionSystem:
         direction_text = "入库" if data_type == DATA_TYPE_INBOUND else "出库"
 
         display_lines.append(f"=== 本次{direction_text}标签 ({len(tag_objects)}个) ===")
-        display_lines.append("")
 
         # 使用原有的格式化方法显示每个标签
         for tag in tag_objects:
-            display_lines.append(self._format_tag_list_display(tag, show_header=False))
-            display_lines.append("")
+            display_lines.append(self._format_tag_list_display(tag))
 
         display_lines.append(f"=== {direction_text}完成 ===")
 
