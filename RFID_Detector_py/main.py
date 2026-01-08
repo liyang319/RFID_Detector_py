@@ -20,6 +20,7 @@ class RFIDProductionSystem:
         self.root = root
         self.root.title("RFID标签识别系统")
         self.root.geometry("1000x800")
+        # self.root.attributes('-zoomed', True)
 
         # 工业风格配色方案
         self.industrial_colors = {
@@ -114,13 +115,13 @@ class RFIDProductionSystem:
         self.max_history_size = 10000
 
         # RFID读写器（替换原来的SocketClient）
-        self.rfid_reader = RFIDReader_CNNT('192.168.1.200', 2000)
+        self.rfid_reader = RFIDReader_CNNT('192.168.31.123', 2000)
         self.setup_rfid_callbacks()
         self.device_id = "RFID-DETECTOR-001"
 
         # MQTT客户端（新增）
         self.mqtt_client = MqttClient(
-            broker='192.168.1.100',  # 根据实际情况修改
+            broker='192.168.3.83',  # 根据实际情况修改
             port=1883,
             username='None',  # 根据实际情况修改
             password='None',  # 根据实际情况修改
@@ -129,7 +130,8 @@ class RFIDProductionSystem:
         self.setup_mqtt_callbacks()
 
         # 串口通信（新增）
-        self.serial_comm = SerialComm('/dev/tty.usbserial-1410', 9600)
+        # self.serial_comm = SerialComm('/dev/tty.usbserial-1410', 9600)
+        self.serial_comm = SerialComm('/dev/ttyS0', 9600)
         self.serial_reading_active = False  # 串口读取线程状态标志
 
         # 将scrollable_frame作为新的根窗口传递
@@ -463,7 +465,7 @@ class RFIDProductionSystem:
 
         self.host_entry = tk.Entry(config_frame, width=15, font=("微软雅黑", 9),
                                    relief='solid', bd=1, bg='white')
-        self.host_entry.insert(0, "192.168.1.200")
+        self.host_entry.insert(0, "192.168.31.123")
         self.host_entry.pack(side='left', padx=(0, 15))
 
         tk.Label(config_frame, text="端口号:", font=("微软雅黑", 9, "bold"),
