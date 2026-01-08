@@ -1186,7 +1186,8 @@ class RFIDProductionSystem:
                         'tid': tag.tid,
                         'rssi': tag.rssi,
                         'timestamp': tag.timestamp,
-                        'product_name': tag.product_name
+                        'product_name': tag.product_name,
+                        'antenna_num': tag.antenna_num
                     })
 
             if tag_data:
