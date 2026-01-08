@@ -542,7 +542,7 @@ class RFIDProductionSystem:
 
     def update_time(self):
         """更新当前时间显示"""
-        current_time = datetime.now().strftime("当前时间: %Y年%m月%d日 %H:%M:%S")
+        current_time = datetime.now().strftime(" %Y年%m月%d日 %H:%M:%S")
         self.time_label.config(text=current_time)
         self.root.after(1000, self.update_time)
 
