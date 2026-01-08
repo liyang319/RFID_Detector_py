@@ -860,8 +860,8 @@ class RFIDProductionSystem:
                 # self.daily_label.config(text=str(self.daily_production))
 
                 # 更新界面显示
-                display_text = self._format_tag_list_display(tag)
-                self.update_element_text(self.fetch_text, display_text, clear_first=False)
+                # display_text = self._format_tag_list_display(tag)
+                # self.update_element_text(self.fetch_text, display_text, clear_first=False)
 
                 # 添加消息
                 self.add_message(f"读取到新标签: {tag.product_name} (TID: {tag.tid}, RSSI: {tag.rssi:.1f}dBm)")
@@ -897,6 +897,47 @@ class RFIDProductionSystem:
                 f"USER: {tag.user_data} "
                 f"RSSI: {tag.rssi:.1f}dBm "
                 f"天线: {tag.antenna_num}\n")
+
+    def update_ui_with_reported_tags(self, tag_data, data_type):
+        """用上报的标签数据更新UI"""
+        # 清空之前的显示
+        self.update_element_text(self.fetch_text, "", clear_first=True)
+
+        if not tag_data:
+            return
+
+        # 将tag_data转换为RFIDTag对象列表
+        from rfid_tag import RFIDTag  # 假设有RFIDTag类
+
+        tag_objects = []
+        for tag_dict in tag_data:
+            tag = RFIDTag()
+            tag.epc = tag_dict['epc']
+            tag.tid = tag_dict['tid']
+            tag.rssi = tag_dict['rssi']
+            tag.timestamp = tag_dict['timestamp']
+            tag.product_name = tag_dict['product_name']
+            tag.antenna_num = tag_dict.get('antenna_num')
+            tag.success = True
+            tag_objects.append(tag)
+
+        # 创建显示文本
+        display_lines = []
+        direction_text = "入库" if data_type == DATA_TYPE_INBOUND else "出库"
+
+        display_lines.append(f"=== 本次{direction_text}标签 ({len(tag_objects)}个) ===")
+        display_lines.append("")
+
+        # 使用原有的格式化方法显示每个标签
+        for tag in tag_objects:
+            display_lines.append(self._format_tag_list_display(tag, show_header=False))
+            display_lines.append("")
+
+        display_lines.append(f"=== {direction_text}完成 ===")
+
+        # 更新UI显示
+        display_text = "\n".join(display_lines)
+        self.update_element_text(self.fetch_text, display_text, clear_first=False)
 
     def clear_display(self):
         """清空显示内容"""
@@ -1204,6 +1245,10 @@ class RFIDProductionSystem:
                 self.daily_label.config(text=str(self.daily_production))
 
                 result = self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
+                if result:
+                    # 上报成功，更新UI显示
+                    self.update_ui_with_reported_tags(tag_data, data_type)
+
                 self.tag_history.clear()  # 报告后清空历史记录
                 return result
         else:
