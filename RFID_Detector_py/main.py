@@ -914,6 +914,7 @@ class RFIDProductionSystem:
             tag = RFIDTag()
             tag.epc = tag_dict['epc']
             tag.tid = tag_dict['tid']
+            tag.user_data = tag_dict['user_data']
             tag.rssi = tag_dict['rssi']
             tag.timestamp = tag_dict['timestamp']
             tag.product_name = tag_dict['product_name']
@@ -1223,6 +1224,7 @@ class RFIDProductionSystem:
                     tag_data.append({
                         'epc': tag.epc,
                         'tid': tag.tid,
+                        'user_data': tag.user_data,
                         'rssi': tag.rssi,
                         'timestamp': tag.timestamp,
                         'product_name': tag.product_name,
@@ -1243,9 +1245,9 @@ class RFIDProductionSystem:
                 self.daily_label.config(text=str(self.daily_production))
 
                 result = self.send_mqtt_command('report_tags', data_type, {'tags': tag_data})
-                if result:
+                # if result:
                     # 上报成功，更新UI显示
-                    self.update_ui_with_reported_tags(tag_data, data_type)
+                self.update_ui_with_reported_tags(tag_data, data_type)
 
                 self.tag_history.clear()  # 报告后清空历史记录
                 return result
