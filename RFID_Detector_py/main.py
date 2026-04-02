@@ -10,6 +10,7 @@ from command import device_command
 from mqtt_client import MqttClient
 import json
 from serial_comm import SerialComm
+from barcode_scanner import BarCodeScanner
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
@@ -133,6 +134,7 @@ class RFIDProductionSystem:
         # self.serial_comm = SerialComm('/dev/tty.usbserial-1410', 9600)
         self.serial_comm = SerialComm('/dev/ttyS0', 9600)
         self.serial_reading_active = False  # 串口读取线程状态标志
+        self.bar_scanner = None
 
         # 将scrollable_frame作为新的根窗口传递
         self.actual_root = self.scrollable_frame
@@ -626,12 +628,16 @@ class RFIDProductionSystem:
 
         def connect_serial_thread():
             """串口连接线程"""
-            time.sleep(4)  # 延迟4秒连接，避免资源竞争
-            self.start_serial_communication()
+            # time.sleep(4)  # 延迟4秒连接，避免资源竞争
+            # self.start_serial_communication()
+
+            # 新增：延迟一段时间后连接条码扫描器
+            time.sleep(2)  # 再等待2秒
+            self.start_barcode_scanner_communication()
 
         # 分别启动两个线程
-        threading.Thread(target=connect_rfid_thread, daemon=True).start()
-        threading.Thread(target=connect_mqtt_thread, daemon=True).start()
+        # threading.Thread(target=connect_rfid_thread, daemon=True).start()
+        # threading.Thread(target=connect_mqtt_thread, daemon=True).start()
         threading.Thread(target=connect_serial_thread, daemon=True).start()
 
     def connect_rfid(self):
@@ -1024,6 +1030,11 @@ class RFIDProductionSystem:
 
     def on_closing(self):
         """程序关闭时的清理工作"""
+        # 停止条码扫描器
+        if hasattr(self, 'bar_scanner') and self.bar_scanner:
+            self.bar_scanner.stop_receive_loop()
+            self.bar_scanner.close()
+            self.add_message("条码扫描器已关闭")
         if hasattr(self, 'rfid_reader'):
             self.rfid_reader.disconnect()
         # 断开MQTT连接
@@ -1629,6 +1640,111 @@ class RFIDProductionSystem:
 
         # 每秒更新一次
         self.root.after(1000, self.update_software_runtime)
+
+    def start_barcode_scanner_communication(self):
+        """启动条码扫描器通信"""
+        try:
+            # 初始化条码扫描器
+            # 请根据实际情况修改设备路径和波特率
+            self.bar_scanner = BarCodeScanner(
+                port='/dev/tty.usbserial-1410',  # 条码扫描器设备路径
+                baudrate=9600,  # 条码扫描器波特率
+                timeout=1.0  # 超时时间
+            )
+
+            # 设置回调函数
+            self.bar_scanner.set_callback(self.on_barcode_received)
+
+            # 打开串口
+            if self.bar_scanner.open():
+                self.add_message("条码扫描器串口已连接")
+
+                # 启动接收循环
+                if self.bar_scanner.start_receive_loop():
+                    self.add_message("条码扫描器接收线程已启动")
+                else:
+                    self.add_message("条码扫描器接收线程启动失败")
+            else:
+                self.add_message("条码扫描器串口连接失败")
+
+        except Exception as e:
+            self.add_message(f"启动条码扫描器失败: {e}")
+
+    def on_barcode_received(self, barcode):
+        """条码接收回调函数"""
+        try:
+            if not barcode:
+                return
+
+            # 在主线程中更新UI
+            self.root.after(0, lambda: self._handle_barcode_ui_update(barcode))
+
+        except Exception as e:
+            self.add_message(f"处理条码回调错误: {e}")
+
+    def _handle_barcode_ui_update(self, barcode):
+        """在主线程中处理条码UI更新"""
+        try:
+            # 1. 显示条码
+            self.update_barcode_display(barcode)
+
+            # 2. 添加到消息区域
+            timestamp = time.strftime("%H:%M:%S", time.localtime())
+            self.add_message(f"[{timestamp}] 条码: {barcode}")
+
+            # 3. 可以根据业务需求处理条码
+            # 例如：与RFID标签关联、更新数据库等
+            self.process_barcode_for_business(barcode)
+
+        except Exception as e:
+            self.add_message(f"更新条码UI错误: {e}")
+
+    def update_barcode_display(self, barcode):
+        """在UI中显示条码"""
+        try:
+            # 如果有专门的条码显示控件
+            if hasattr(self, 'barcode_display_label'):
+                self.barcode_display_label.config(text=f"条码: {barcode}")
+
+            # 或者在现有的文本框中显示
+            elif hasattr(self, 'fetch_text'):
+                # 在fetch_text中追加显示
+                current_text = self.fetch_text.get("1.0", "end-1c")
+                if current_text:
+                    new_text = f"{current_text}\n条码: {barcode}"
+                else:
+                    new_text = f"条码: {barcode}"
+
+                self.update_element_text(self.fetch_text, new_text, clear_first=True)
+
+        except Exception as e:
+            print(f"更新条码显示错误: {e}")
+
+    def get_barcode(self):
+        """获取一个条码"""
+        if hasattr(self, 'bar_scanner') and self.bar_scanner:
+            return self.bar_scanner.get_barcode()
+        return None
+
+    def get_all_barcodes(self):
+        """获取所有条码"""
+        if hasattr(self, 'bar_scanner') and self.bar_scanner:
+            return self.bar_scanner.get_all_barcodes()
+        return []
+
+    def show_barcode_stats(self):
+        """显示条码扫描器统计信息"""
+        if hasattr(self, 'bar_scanner') and self.bar_scanner:
+            stats = self.bar_scanner.get_stats()
+            stats_text = f"""
+                条码扫描器状态:
+                  设备: {stats['port']}
+                  波特率: {stats['baudrate']}
+                  串口状态: {'已打开' if stats['is_open'] else '未打开'}
+                  接收状态: {'运行中' if stats['is_running'] else '已停止'}
+                  队列长度: {stats['queue_size']}
+                """
+            self.add_message(stats_text)
 
 
 def main():
