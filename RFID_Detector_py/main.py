@@ -11,6 +11,7 @@ from mqtt_client import MqttClient
 import json
 from serial_comm import SerialComm
 from barcode_scanner import BarCodeScanner
+from TcpSocketServer import TcpSocketServer
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
@@ -150,6 +151,11 @@ class RFIDProductionSystem:
 
         # 尝试自动连接RFID读写器
         self.auto_connect()
+
+        # 启动 TCP Socket Server
+        self.tcp_server = TcpSocketServer(host='0.0.0.0', port=3000)  # 可根据需要修改端口
+        self.tcp_server.register_callback(self.on_tcp_message)
+        self.start_tcp_server()
 
     def setup_rfid_callbacks(self):
         """设置RFID读写器回调函数"""
@@ -1053,6 +1059,11 @@ class RFIDProductionSystem:
                 self.add_message("串口通信已关闭")
             except:
                 pass
+        # 停止 TCP Server
+        if hasattr(self, 'tcp_server'):
+            self.tcp_server.stop()
+            self.add_message("TCP Server 已关闭")
+
         self.root.destroy()
 
     def update_element_text(self, element, text: str, **kwargs) -> bool:
@@ -1803,6 +1814,46 @@ class RFIDProductionSystem:
                   队列长度: {stats['queue_size']}
                 """
             self.add_message(stats_text)
+
+    def start_tcp_server(self):
+        """在后台线程中启动 TCP Socket Server"""
+
+        def run_server():
+            try:
+                self.tcp_server.start()
+            except Exception as e:
+                self.add_message(f"启动 TCP Server 失败: {e}")
+        threading.Thread(target=run_server, daemon=True).start()
+
+    def on_tcp_message(self, data: bytes, addr):
+        """
+        收到 TCP 客户端消息时的回调
+        :param data: 原始字节数据
+        :param addr: 客户端地址 (ip, port)
+        """
+        print('on_tcp_message')
+        # 将数据解码为字符串（假设客户端发送 UTF-8 文本）
+        try:
+            msg = data.decode('utf-8').strip()
+            print(msg)
+        except UnicodeDecodeError:
+            msg = data.hex()
+
+        # 记录日志（通过 UI 的消息区域显示）
+        self.add_message(f"TCP 客户端 [{addr[0]}:{addr[1]}] 发来: {msg}")
+
+        # 可选：根据消息内容执行相应操作（如控制设备）
+        # 注意：此回调在 TCP 子线程中运行，如需更新 UI 请使用 root.after
+        # 示例：如果收到 "stop"，则执行紧急制动
+        if msg.lower() == "stop":
+            self.root.after(0, self.emergency_stop)
+        elif msg.lower() == "start":
+            self.root.after(0, lambda: self.toggle_production() if not self.is_running else None)
+        elif msg.lower() == "status":
+            # 回复当前状态
+            status = f"运行中: {self.is_running}, 当前识别数量: {self.current_load}"
+            self.tcp_server.send_to_all(status)
+        # 更多自定义命令可在此扩展
 
 
 def main():

@@ -177,10 +177,13 @@ class BarCodeScanner:
             try:
                 # 接收数据
                 data, length = self.receive_data(max_length=100, timeout=0.1)
+                print(f'data={data}')
+                print(f'length={length}')
 
                 if data and length > 0:
                     # 处理条码数据
                     barcode = self.process_received_data(data, length)
+                    print('-------barcode----------')
 
                     if barcode:
                         # 添加到队列
