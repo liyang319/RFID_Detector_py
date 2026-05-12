@@ -12,9 +12,13 @@ import json
 from serial_comm import SerialComm
 from barcode_scanner import BarCodeScanner
 from TcpSocketServer import TcpSocketServer
+from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
+SERIAL_COM_IO = "/dev/tty.usbserial-1420"
+SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-1420"
 
 
 class RFIDProductionSystem:
@@ -132,10 +136,17 @@ class RFIDProductionSystem:
         self.setup_mqtt_callbacks()
 
         # 串口通信（新增）
-        self.serial_comm = SerialComm('/dev/tty.usbserial-1420', 9600)
+        self.serial_comm = SerialComm(SERIAL_COM_IO, 9600)
         # self.serial_comm = SerialComm('/dev/ttyS0', 9600)
         self.serial_reading_active = False  # 串口读取线程状态标志
         self.bar_scanner = None
+
+        # RFID读写器（串口版，新增）
+        self.rfid_reader_serial = RFIDReader_SFM2200(
+            port=SERIAL_COM_RFID_READER,  # 请根据实际设备修改
+            baudrate=115200,  # 根据实际读写器要求修改
+            timeout=1.0
+        )
 
         # 将scrollable_frame作为新的根窗口传递
         self.actual_root = self.scrollable_frame
@@ -641,6 +652,10 @@ class RFIDProductionSystem:
             time.sleep(2)  # 再等待2秒
             self.start_barcode_scanner_communication()
 
+            # 新增：SFM2200
+            time.sleep(1)
+            self.start_rfid_reader_serial()
+
         # 分别启动两个线程
         threading.Thread(target=connect_rfid_thread, daemon=True).start()
         threading.Thread(target=connect_mqtt_thread, daemon=True).start()
@@ -1063,6 +1078,13 @@ class RFIDProductionSystem:
         if hasattr(self, 'tcp_server'):
             self.tcp_server.stop()
             self.add_message("TCP Server 已关闭")
+
+        # 关闭串口 RFID 读写器
+        if hasattr(self, 'rfid_reader_serial'):
+            self.rfid_reader_serial.stoploop()  # 发送停止指令
+            self.rfid_reader_serial.stop_receive_loop()  # 若启动了接收循环则停止
+            self.rfid_reader_serial.close()
+            self.add_message("串口 RFID 读写器已关闭")
 
         self.root.destroy()
 
@@ -1710,7 +1732,7 @@ class RFIDProductionSystem:
             # 初始化条码扫描器
             # 请根据实际情况修改设备路径和波特率
             self.bar_scanner = BarCodeScanner(
-                port='/dev/tty.usbserial-1410',  # 条码扫描器设备路径
+                port=SERIAL_COM_BARCODE_SCANNER,  # 条码扫描器设备路径
                 baudrate=9600,  # 条码扫描器波特率
                 timeout=1.0  # 超时时间
             )
@@ -1854,6 +1876,26 @@ class RFIDProductionSystem:
             status = f"运行中: {self.is_running}, 当前识别数量: {self.current_load}"
             self.tcp_server.send_to_all(status)
         # 更多自定义命令可在此扩展
+
+    def start_rfid_reader_serial(self):
+        """启动串口 RFID 读写器"""
+
+        def connect():
+            if self.rfid_reader_serial.open():
+                self.add_message("串口 RFID 读写器连接成功")
+                # 可选：设置数据接收回调
+                self.rfid_reader_serial.set_callback(self.on_rfid_serial_data)
+                # 如果需要自动接收，可以启动接收循环
+                # self.rfid_reader_serial.start_receive_loop()
+            else:
+                self.add_message("串口 RFID 读写器连接失败")
+
+        threading.Thread(target=connect, daemon=True).start()
+
+    def on_rfid_serial_data(self, data):
+        """处理串口 RFID 读写器接收到的数据"""
+        # 在子线程中调用，需通过 root.after 更新 UI
+        self.root.after(0, lambda: self.add_message(f"串口 RFID 收到数据: {data.hex()}"))
 
 
 def main():
