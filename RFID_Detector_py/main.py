@@ -41,6 +41,7 @@ class RFIDProductionSystem:
             'text_dark': '#2c3e50',  # 深蓝色 - 深色文本
             'border': '#bdc3c7'  # 灰色 - 边框
         }
+        self.serial_rfid_buffer = bytearray()
 
         self.root.configure(bg=self.industrial_colors['primary_bg'])
         self.root.resizable(True, True)
@@ -1895,12 +1896,124 @@ class RFIDProductionSystem:
 
         threading.Thread(target=connect, daemon=True).start()
 
-    def on_rfid_serial_data(self, data):
-        """处理串口 RFID 读写器接收到的数据"""
-        print('on_rfid_serial_data')
-        print(data)
-        # 在子线程中调用，需通过 root.after 更新 UI
-        self.root.after(0, lambda: self.add_message(f"串口 RFID 收到数据: {data.hex()}"))
+    def on_rfid_serial_data(self, data: bytes):
+        """处理串口 RFID 读写器接收到的数据（在子线程中调用）"""
+        # 解析数据，创建 RFIDTag 对象
+        tag = self._parse_serial_rfid_data(data)
+        if tag is None or not tag.success:
+            self.root.after(0, lambda: self.add_message(
+                f"串口 RFID 数据解析失败: {tag.error_message if tag else '未知错误'}"))
+            return
+
+        # 在 UI 线程中处理标签去重和更新
+        self.root.after(0, lambda: self._add_serial_tag_to_history(tag))
+
+    def _parse_serial_rfid_data(self, data: bytes) -> RFIDTag:
+        """
+        解析串口 RFID 数据（协议格式见注释）
+        返回 RFIDTag 对象，解析失败返回 None
+        """
+        # 协议结构:
+        # 0-4:   cmdType (FF 2B AA 00 00)
+        # 5-6:   Metadata Flags (2字节)
+        # 7:     rssi (signed)
+        # 8:     antenna_num
+        # 9-12:  timestamp (4字节)
+        # 13-14: Metadata-Tag Data Length (2字节)
+        # 15-34: user_data (20字节)
+        # 35:    EPC Length (1字节)
+        # 36-37: pc (2字节)
+        # 38...: epc (长度 = EPC Length)
+        # 之后:  EPC-CRC (2字节) + CRC (2字节) — 可选校验
+
+        # 最小长度检查: 至少需要 38 字节 + 1 字节 EPC
+        if len(data) < 39:
+            tag = RFIDTag()
+            tag.success = False
+            tag.error_message = f"数据长度不足，期望≥39，实际{len(data)}"
+            return tag
+
+        # 校验 cmdType
+        expected_cmd = bytes([0xFF, 0x2B, 0xAA, 0x00, 0x00])
+        if data[:5] != expected_cmd:
+            tag = RFIDTag()
+            tag.success = False
+            tag.error_message = f"cmdType 不匹配，期望 FF 2B AA 00 00，收到 {data[:5].hex()}"
+            return tag
+
+        try:
+            tag = RFIDTag()
+            # 提取固定字段
+            tag.rssi = data[7]  # 第8个字节，作为有符号整数
+            if tag.rssi > 127:
+                tag.rssi = tag.rssi - 256  # 转换为有符号
+            tag.antenna_num = data[8]
+
+            # user_data (20字节)
+            user_bytes = data[15:35]
+            tag.user_data = ' '.join(f'{b:02X}' for b in user_bytes)  # 十六进制字符串
+
+            # pc (2字节)
+            pc_bytes = data[36:38]
+            tag.pc = ' '.join(f'{b:02X}' for b in pc_bytes)
+
+            # epc 长度
+            epc_len = data[35]  # EPC Length，单位字节
+            if len(data) < 38 + epc_len:
+                tag.success = False
+                tag.error_message = f"EPC 长度不足，需要 {epc_len} 字节，实际剩余 {len(data) - 38}"
+                return tag
+
+            epc_bytes = data[38:38 + epc_len]
+            tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)  # 连续十六进制字符串
+
+            # TID 字段为空（串口协议无 TID）
+            tag.tid = ""
+
+            # 设置时间戳
+            tag.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 从 USER 数据解析产品信息（复用现有逻辑）
+            tag._parse_product_info()  # 该方法会使用 tag.user_data 填充产品字段
+
+            tag.success = True
+            tag.error_message = ""
+            return tag
+
+        except Exception as e:
+            tag = RFIDTag()
+            tag.success = False
+            tag.error_message = f"解析异常: {str(e)}"
+            return tag
+
+    def _add_serial_tag_to_history(self, tag: RFIDTag):
+        """将串口 RFID 标签添加到历史记录（基于 EPC 去重，更新 UI）"""
+        if not tag.success:
+            self.add_message(f"标签无效: {tag.error_message}")
+            return
+
+        # 检查 EPC 是否已存在于历史记录中
+        epc_exists = any(existing_tag.epc == tag.epc for existing_tag in self.tag_history)
+
+        if not epc_exists:
+            # 添加到历史记录
+            self.tag_history.append(tag)
+            # 限制历史记录大小
+            if len(self.tag_history) > self.max_history_size:
+                self.tag_history.pop(0)
+
+            # 更新当前装载数量
+            self.current_load = len(self.tag_history)
+            self.current_load_label.config(text=str(self.current_load))
+
+            # 在取标内容区域追加显示标签信息（可选）
+            display_text = self._format_tag_display(tag)
+            self.update_element_text(self.fetch_text, display_text, clear_first=False)
+
+            # 添加日志消息
+            self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
+        else:
+            self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
 
 
 def main():
