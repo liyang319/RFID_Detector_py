@@ -1081,6 +1081,7 @@ class RFIDProductionSystem:
 
         # 关闭串口 RFID 读写器
         if hasattr(self, 'rfid_reader_serial'):
+            print('close')
             self.rfid_reader_serial.stoploop()  # 发送停止指令
             self.rfid_reader_serial.stop_receive_loop()  # 若启动了接收循环则停止
             self.rfid_reader_serial.close()
@@ -1886,7 +1887,9 @@ class RFIDProductionSystem:
                 # 可选：设置数据接收回调
                 self.rfid_reader_serial.set_callback(self.on_rfid_serial_data)
                 # 如果需要自动接收，可以启动接收循环
-                # self.rfid_reader_serial.start_receive_loop()
+                self.rfid_reader_serial.start_receive_loop()
+                self.rfid_reader_serial.start_firmware()
+                self.rfid_reader_serial.startloop()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
 
@@ -1894,6 +1897,8 @@ class RFIDProductionSystem:
 
     def on_rfid_serial_data(self, data):
         """处理串口 RFID 读写器接收到的数据"""
+        print('on_rfid_serial_data')
+        print(data)
         # 在子线程中调用，需通过 root.after 更新 UI
         self.root.after(0, lambda: self.add_message(f"串口 RFID 收到数据: {data.hex()}"))
 
