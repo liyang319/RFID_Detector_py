@@ -153,3 +153,81 @@ class RFIDReader_SFM2200:
                 f.write(f"{timestamp} - {hex_str}\n")
         except Exception as e:
             print(f"记录日志失败: {e}")
+
+    def calc_crc(self, data: bytes) -> int:
+        """
+        计算 CRC-16/CCITT-FALSE，初始值 0xFFFF，多项式 0x1021。
+        注意：C 代码从下标 1 开始计算（即忽略 data[0]）。
+        :param data: 待计算的字节序列（一般包含指令头及数据，其中第一个字节不参与计算）
+        :return: 16 位 CRC 值
+        """
+        crc = 0xFFFF
+        # 从索引 1 开始，跳过第一个字节
+        for i in range(1, len(data)):
+            byte_val = data[i]
+            # 从高位到低位逐位处理
+            for bit in range(7, -1, -1):  # 7 到 0
+                xor_flag = (crc >> 15) & 1
+                crc = (crc << 1) | ((byte_val >> bit) & 1)
+                if xor_flag:
+                    crc ^= 0x1021
+        # 只保留低 16 位
+        return crc & 0xFFFF
+
+    def get_cmd_append_crc(self, data: bytes, little_endian: bool = True) -> bytes:
+        """
+        计算 data 的 CRC，并附加到 data 末尾返回。
+        :param data: 原始指令（不含 CRC）
+        :param little_endian: True 表示将 CRC 低字节在前，高字节在后；False 表示高字节在前
+        :return: 原始指令 + CRC 校验字节（2 字节）
+        """
+        crc = self.calc_crc(data)
+        if little_endian:
+            crc_bytes = crc.to_bytes(2, 'little')
+        else:
+            crc_bytes = crc.to_bytes(2, 'big')
+        return data + crc_bytes
+
+    def write_tag_with_userdata(self, userdata: bytes) -> bool:
+        """
+        向 RFID 标签写入用户数据（User Data）。
+        :param userdata: 要写入的用户数据，长度必须为 20 字节
+        :return: 是否写入成功
+        """
+        # 指令模板：前11字节固定 + 20字节用户数据占位符
+        base_template = bytes([
+            0xFF, 0x1C, 0x24, 0x03, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x04, 0x03,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ])
+
+        if len(userdata) != 20:
+            print(f"错误：用户数据长度必须为 20 字节，实际为 {len(userdata)} 字节")
+            return False
+
+        # 构建完整命令：前11字节 + 用户数据20字节
+        cmd = base_template[:11] + userdata
+        # 计算CRC并附加（小端序）
+        cmd_with_crc = self.get_cmd_append_crc(cmd, little_endian=False)
+
+        if not self.send_command(cmd_with_crc):
+            print("发送指令失败")
+            return False
+
+        response = self.receive_response(timeout=10.0)
+        if not response or len(response) < 5:
+            print(f"响应数据无效: {response.hex() if response else '空'}")
+            return False
+
+        # 检查响应头是否为 FF 00 24
+        if response[0] != 0xFF or response[1] != 0x00 or response[2] != 0x24:
+            print(f"响应头异常: {response[0:3].hex()}")
+            return False
+
+        # 检查第4和第5字节（索引3、4）是否为 0x00
+        if response[3] == 0 and response[4] == 0:
+            print("写入用户数据成功")
+            return True
+        else:
+            print(f"写入用户数据失败，状态码: {response[3]:02X}{response[4]:02X}")
+            return False
