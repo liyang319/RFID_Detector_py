@@ -126,21 +126,55 @@ class RFIDReader_SFM2200:
 
     def _receive_loop(self):
         print("进入 RFID 读写器接收循环")
+        # 用于缓存标签上报数据（FF XX AA 开头）的缓冲区
+        tag_buffer = bytearray()
+        NORMAL_TAG_HEADER = bytes([0xFF, 0x2B, 0xAA, 0x00, 0x00, 0x00, 0x96])
+        header_len = len(NORMAL_TAG_HEADER)
+
         while self.running:
             try:
                 data = self.serial_port.read(1024)
-                if data:
-                    if self._is_tag_report(data):
-                        # 标签上报：只通过回调
-                        if self.callback:
-                            self.callback(data)
-                    else:
-                        # 其他数据（指令响应）：放入队列
-                        self.response_queue.put(data)
-                    hex_str = ' '.join(f'{b:02X}' for b in data)
-                    print(f"RFID收到数据: {hex_str}")
-                else:
+                if not data:
                     time.sleep(0.05)
+                    continue
+
+                # 判断是否为标签上报数据（FF XX AA）
+                if self._is_tag_report(data):
+                    # 追加到标签缓冲区
+                    tag_buffer.extend(data)
+                    # 尝试从缓冲区中提取完整的正常标签包
+                    while True:
+                        # 查找正常包头
+                        idx = tag_buffer.find(NORMAL_TAG_HEADER)
+                        if idx == -1:
+                            # 没有正常包头，说明缓冲区中的数据都是异常包（如 FF 17 AA），丢弃全部
+                            tag_buffer.clear()
+                            break
+                        if idx > 0:
+                            # 丢弃包头前的无效数据（异常包或半包）
+                            tag_buffer = tag_buffer[idx:]
+                            continue
+                        # 现在 tag_buffer 以正常包头开头，至少需要 36 字节才能读取 EPC 长度
+                        if len(tag_buffer) < 36:
+                            break
+                        epc_len = tag_buffer[35]
+                        total_len = 42 + epc_len   # 7头 + 35固定 + epc_len
+                        if len(tag_buffer) < total_len:
+                            break
+                        # 提取完整正常包
+                        packet = bytes(tag_buffer[:total_len])
+                        tag_buffer = tag_buffer[total_len:]
+                        # 通过回调传递正常标签包
+                        if self.callback:
+                            self.callback(packet)
+                else:
+                    # 非标签上报数据（指令响应），直接放入响应队列
+                    self.response_queue.put(data)
+
+                # 可选：打印接收到的原始数据（避免刷屏可注释）
+                hex_str = ' '.join(f'{b:02X}' for b in data)
+                print(f"RFID收到数据: {hex_str}")
+
             except Exception as e:
                 print(f"RFID读写器接收循环错误: {e}")
                 time.sleep(0.5)
