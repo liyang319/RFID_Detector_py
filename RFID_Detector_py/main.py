@@ -951,8 +951,8 @@ class RFIDProductionSystem:
         if tag_data:
             display_lines.append(f"RFID标签 ({len(tag_data)}个):")
             for i, tag in enumerate(tag_data, 1):
-                display_lines.append(f"{i}. 产品: {tag['product_name']}")
-                display_lines.append(f"   EPC: {tag['epc']}")
+                display_lines.append(f"{i}. 产品: {tag['product_name']}  EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
+                # display_lines.append(f"   EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
 
         # 显示条码
         if barcodes:
