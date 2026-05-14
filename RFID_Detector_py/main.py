@@ -18,7 +18,7 @@ DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
 SERIAL_COM_IO = "/dev/tty.usbserial-1420"
 SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-1420"
+SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-1430"
 
 
 class RFIDProductionSystem:
@@ -609,24 +609,26 @@ class RFIDProductionSystem:
             self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
             self.serial_comm.write_register(self.green_light, False, timeout=0.5)
             self.tag_history.clear()
-            if self.rfid_reader.get_connection_status():
-                if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
-                    self.add_message("发送开始生产指令成功")
-                else:
-                    self.add_message("发送开始生产指令失败")
-            else:
-                self.add_message("RFID读写器未连接，无法发送指令")
+            self.rfid_reader_serial.startloop()
+            # if self.rfid_reader.get_connection_status():
+            #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
+            #         self.add_message("发送开始生产指令成功")
+            #     else:
+            #         self.add_message("发送开始生产指令失败")
+            # else:
+            #     self.add_message("RFID读写器未连接，无法发送指令")
         else:
             # 发送紧急停止指令到RFID读写器
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
-            if self.rfid_reader.get_connection_status():
-                if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
-                    self.add_message("发送紧急停止指令成功")
-                else:
-                    self.add_message("发送紧急停止指令失败")
-            else:
-                self.add_message("RFID读写器未连接，无法发送指令")
+            self.rfid_reader_serial.startloop()
+            # if self.rfid_reader.get_connection_status():
+            #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
+            #         self.add_message("发送紧急停止指令成功")
+            #     else:
+            #         self.add_message("发送紧急停止指令失败")
+            # else:
+            #     self.add_message("RFID读写器未连接，无法发送指令")
 
     # RFID读写器相关方法
     def auto_connect(self):
@@ -1901,7 +1903,7 @@ class RFIDProductionSystem:
                 #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
                 # ])
                 # self.rfid_reader_serial.write_tag_with_userdata(user_data)
-                self.rfid_reader_serial.startloop()
+                # self.rfid_reader_serial.startloop()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
 
