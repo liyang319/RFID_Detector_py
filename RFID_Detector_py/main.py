@@ -1892,6 +1892,15 @@ class RFIDProductionSystem:
                 # 如果需要自动接收，可以启动接收循环
                 self.rfid_reader_serial.start_receive_loop()
                 self.rfid_reader_serial.start_firmware()
+                # user_data = bytes([
+                #     0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                #     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11
+                # ])
+                # user_data = bytes([
+                #     0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+                #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
+                # ])
+                # self.rfid_reader_serial.write_tag_with_userdata(user_data)
                 self.rfid_reader_serial.startloop()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
@@ -2036,9 +2045,9 @@ class RFIDProductionSystem:
             # 9-12: 时间戳
             # 13-14: Tag Data Length
             # 15-34: User Data (20字节)
-            # 35: EPC Length
+            # 35: EPC Length (包含附加数据)
             # 36-37: PC
-            # 38开始: EPC 数据
+            # 38开始: EPC 数据 (实际长度 = EPC Length - 4)
 
             rssi_byte = data[7]
             tag.rssi = rssi_byte if rssi_byte < 128 else rssi_byte - 256
@@ -2052,19 +2061,22 @@ class RFIDProductionSystem:
             pc_bytes = data[36:38]
             tag.pc = ' '.join(f'{b:02X}' for b in pc_bytes)
 
-            # EPC 长度
+            # EPC 长度（包含尾部附加数据）
             epc_len = data[35]
-            if len(data) < 38 + epc_len:
+            real_epc_len = epc_len - 4
+            if real_epc_len < 0:
+                real_epc_len = 0
+
+            if len(data) < 38 + real_epc_len:
                 tag.success = False
-                tag.error_message = f"数据长度不足，需要 {38 + epc_len} 字节，实际 {len(data)}"
+                tag.error_message = f"数据长度不足，需要 {38 + real_epc_len} 字节，实际 {len(data)}"
                 return tag
 
-            epc_bytes = data[38:38 + epc_len]
+            epc_bytes = data[38:38 + real_epc_len]
             tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
             tag.tid = ""  # 本协议无 TID
 
             tag.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # 调用原有产品信息解析（根据 user_data 填充）
             tag._parse_product_info()
             tag.success = True
             return tag
@@ -2094,8 +2106,9 @@ class RFIDProductionSystem:
             self.current_load_label.config(text=str(self.current_load))
 
             # 在取标内容区域追加显示标签信息（可选）
-            display_text = self._format_tag_display(tag)
-            self.update_element_text(self.fetch_text, display_text, clear_first=False)
+            # display_text = self._format_tag_display(tag)
+            # print(display_text)
+            # self.update_element_text(self.fetch_text, display_text, clear_first=False)
 
             # 添加日志消息
             self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
