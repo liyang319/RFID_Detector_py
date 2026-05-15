@@ -16,9 +16,9 @@ from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-SERIAL_COM_IO = "/dev/tty.usbserial-1420"
+SERIAL_COM_IO = "/dev/tty.usbserial-14240"
 SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-1430"
+SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
 
 
 class RFIDProductionSystem:
@@ -1894,6 +1894,7 @@ class RFIDProductionSystem:
                 # 如果需要自动接收，可以启动接收循环
                 self.rfid_reader_serial.start_receive_loop()
                 self.rfid_reader_serial.start_firmware()
+                self.rfid_reader_serial.set_write_callback(self.on_rfid_write_result)
                 # user_data = bytes([
                 #     0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 #     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11
@@ -2117,6 +2118,20 @@ class RFIDProductionSystem:
         else:
             self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
 
+    def on_rfid_write_result(self, success: bool):
+        """写标签结果回调，控制灯光"""
+        if success:
+            # 写成功：绿灯亮，黄灯灭，红灯灭
+            self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+            self.serial_comm.write_register(self.red_light, False, timeout=0.5)
+            self.add_message("写标签成功，绿灯已亮")
+        else:
+            # 写失败：红灯亮，绿灯灭，黄灯灭
+            self.serial_comm.write_register(self.green_light, False, timeout=0.5)
+            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+            self.serial_comm.write_register(self.red_light, True, timeout=0.5)
+            self.add_message("写标签失败，红灯已亮")
 
 def main():
     root = tk.Tk()

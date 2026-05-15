@@ -17,6 +17,7 @@ class RFIDReader_SFM2200:
         self.callback = None
         self.lock = threading.Lock()
         self.response_queue = queue.Queue(maxsize=100)
+        self.write_callback = None
 
     # -------------------- 基础串口操作 --------------------
     def open(self):
@@ -211,7 +212,16 @@ class RFIDReader_SFM2200:
         self.receive_response(timeout=3)
         return True
 
+    def set_write_callback(self, callback):
+        """设置写标签结果的回调函数，callback 接收一个 bool 参数（成功为 True）"""
+        self.write_callback = callback
+
     def write_tag_with_userdata(self, userdata: bytes) -> bool:
+        """
+        向 RFID 标签写入用户数据（User Data）。
+        :param userdata: 要写入的用户数据，长度必须为 20 字节
+        :return: 是否写入成功
+        """
         base_template = bytes([
             0xFF, 0x1C, 0x24, 0x03, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x04, 0x03,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -220,25 +230,37 @@ class RFIDReader_SFM2200:
         if len(userdata) != 20:
             print(f"错误：用户数据长度必须为 20 字节，实际为 {len(userdata)} 字节")
             return False
+
         cmd = base_template[:11] + userdata
         cmd_with_crc = self.get_cmd_append_crc(cmd, little_endian=False)
+
         self.clear_response_queue()
         if not self.send_command(cmd_with_crc):
             print("发送指令失败")
             return False
-        response = self.receive_response(timeout=3)
+
+        response = self.receive_response(timeout=3.0)
         if not response or len(response) < 5:
             print(f"响应数据无效: {response.hex() if response else '空'}")
             return False
+
+        # 检查响应头是否为 FF 00 24
         if response[0] != 0xFF or response[1] != 0x00 or response[2] != 0x24:
             print(f"响应头异常: {response[0:3].hex()}")
             return False
-        if response[3] == 0 and response[4] == 0:
+
+        # 检查状态字节（索引3、4）是否为 0x00
+        success = (response[3] == 0 and response[4] == 0)
+        if success:
             print("写入用户数据成功")
-            return True
         else:
             print(f"写入用户数据失败，状态码: {response[3]:02X}{response[4]:02X}")
-            return False
+
+        # 调用回调（如果已设置）
+        if self.write_callback:
+            self.write_callback(success)
+
+        return success
 
     def log_data(self, data_bytes):
         try:
