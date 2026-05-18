@@ -1766,9 +1766,9 @@ class RFIDProductionSystem:
         try:
             if not barcode:
                 return
-
+            print(barcode)
             # 在主线程中更新UI
-            self.root.after(0, lambda: self._handle_barcode_ui_update(barcode))
+            # self.root.after(0, lambda: self._handle_barcode_ui_update(barcode))
 
         except Exception as e:
             self.add_message(f"处理条码回调错误: {e}")
