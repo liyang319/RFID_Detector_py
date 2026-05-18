@@ -1505,6 +1505,10 @@ class RFIDProductionSystem:
                                                 # 新增：清空条码缓存，开始收集入库条码
                                                 self.clear_barcode_cache()
 
+                                                # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                if not self.write_done and not self.write_in_progress:
+                                                    self._execute_fixed_write()
+
                                             elif current_status == 0x02:  # 光栅2遮挡
                                                 current_state = STATE_OUTBOUND_START
                                                 self.direction = 2
@@ -1514,6 +1518,10 @@ class RFIDProductionSystem:
 
                                                 # 新增：清空条码缓存，开始收集出库条码
                                                 self.clear_barcode_cache()
+
+                                                # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                if not self.write_done and not self.write_in_progress:
+                                                    self._execute_fixed_write()
 
                                         elif current_state == STATE_INBOUND_START:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
@@ -2157,19 +2165,11 @@ class RFIDProductionSystem:
                 return False
 
     def on_rfid_write_result(self, success: bool):
-        """写标签结果回调，控制灯光"""
+        """写标签结果回调（不修改灯状态，避免与状态机灯光逻辑冲突）"""
         if success:
-            # 写成功：绿灯亮，黄灯灭，红灯灭
-            self.serial_comm.write_register(self.green_light, True, timeout=0.5)
-            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
-            self.serial_comm.write_register(self.red_light, False, timeout=0.5)
-            self.add_message("写标签成功，绿灯已亮")
+            self.add_message("写标签结果: 成功")
         else:
-            # 写失败：红灯亮，绿灯灭，黄灯灭
-            self.serial_comm.write_register(self.green_light, False, timeout=0.5)
-            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
-            self.serial_comm.write_register(self.red_light, True, timeout=0.5)
-            self.add_message("写标签失败，红灯已亮")
+            self.add_message("写标签结果: 失败")
 
 def main():
     root = tk.Tk()

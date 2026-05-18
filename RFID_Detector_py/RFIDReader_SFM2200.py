@@ -241,6 +241,7 @@ class RFIDReader_SFM2200:
             return False
 
         response = self.receive_response(timeout=3.0)
+        print(f"响应数据{response}")
         if not response or len(response) < 5:
             print(f"响应数据无效: {response.hex() if response else '空'}")
             return False
