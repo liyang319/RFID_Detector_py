@@ -621,7 +621,7 @@ class RFIDProductionSystem:
             # 发送紧急停止指令到RFID读写器
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
-            self.rfid_reader_serial.startloop()
+            self.rfid_reader_serial.stoploop()
             # if self.rfid_reader.get_connection_status():
             #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
             #         self.add_message("发送紧急停止指令成功")
@@ -1976,65 +1976,6 @@ class RFIDProductionSystem:
             print(f"[RFID Serial] 解析失败: {tag.error_message}，跳过当前包头")
             # 跳过当前包头（header_len 字节），继续尝试下一个包头
             return None, header_len
-
-    def _parse_single_serial_packet(self, data: bytes) -> RFIDTag:
-        print('_parse_single_serial_packet')
-        """
-        解析一个完整的数据包（包含7字节特征头）
-        数据格式：
-        0-6:   FF 2B AA 00 00 00 96
-        7:     RSSI
-        8:     天线号
-        9-12:  时间戳（4字节）
-        13-14: Tag Data Length（2字节）
-        15-34: User Data（20字节）
-        35:    EPC 长度（字节）
-        36-37: PC（2字节）
-        38开始: EPC 数据（epc_len 字节）
-        之后:   CRC（2字节） + CRC（2字节）
-        """
-        tag = RFIDTag()
-        try:
-            # 检查特征头
-            NORMAL_HEADER = bytes([0xFF, 0x2B, 0xAA, 0x00, 0x00, 0x00, 0x96])
-            if len(data) < 7 or data[:7] != NORMAL_HEADER:
-                tag.success = False
-                tag.error_message = "包头不匹配"
-                return tag
-
-            # 提取 RSSI（有符号）
-            rssi_byte = data[7]
-            tag.rssi = rssi_byte if rssi_byte < 128 else rssi_byte - 256
-            tag.antenna_num = data[8]
-
-            # User Data（20字节）
-            user_bytes = data[15:35]
-            tag.user_data = ' '.join(f'{b:02X}' for b in user_bytes)
-
-            # PC（2字节）
-            pc_bytes = data[36:38]
-            tag.pc = ' '.join(f'{b:02X}' for b in pc_bytes)
-
-            # EPC 长度和 EPC 数据
-            epc_len = data[35]
-            if len(data) < 38 + epc_len:
-                tag.success = False
-                tag.error_message = f"数据长度不足，需要 {38 + epc_len} 字节，实际 {len(data)}"
-                return tag
-
-            epc_bytes = data[38:38 + epc_len]
-            tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
-            tag.tid = ""  # 本协议无 TID
-
-            tag.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # 调用原有产品信息解析（根据 user_data 填充）
-            tag._parse_product_info()
-            tag.success = True
-            return tag
-        except Exception as e:
-            tag.success = False
-            tag.error_message = f"解析异常: {str(e)}"
-            return tag
 
     def _parse_single_serial_packet(self, data: bytes) -> RFIDTag:
         """解析一个完整的数据包（协议格式）"""
