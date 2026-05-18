@@ -217,6 +217,7 @@ class RFIDReader_SFM2200:
         self.write_callback = callback
 
     def write_tag_with_userdata(self, userdata: bytes) -> bool:
+        print('write_tag_with_userdata')
         """
         向 RFID 标签写入用户数据（User Data）。
         :param userdata: 要写入的用户数据，长度必须为 20 字节

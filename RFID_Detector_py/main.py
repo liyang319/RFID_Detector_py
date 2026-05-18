@@ -118,6 +118,17 @@ class RFIDProductionSystem:
         self.green_light = 0x04
         self.beep_ctrl = 0x06
 
+        # 固定写入标签内容（20字节）
+        self.FIXED_USER_DATA = bytes([
+            0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
+            0xAA, 0xAA, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD, 0xDD, 0xEE, 0xEE
+        ])
+        self.fixed_user_data_hex = ' '.join(f'{b:02X}' for b in self.FIXED_USER_DATA)
+
+        # 写入状态跟踪
+        self.write_done = False
+        self.write_in_progress = False
+
         # RFID标签管理
         self.current_tag = None
         self.tag_history = []
@@ -605,30 +616,17 @@ class RFIDProductionSystem:
     def start_rfid_loop_query(self, b_on):
         print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
-            # 发送开始生产指令到RFID读写器
+            # 入库/出库开始：黄灯亮，清空缓存，不启动RFID读取（等待MIDDLE状态写入后再读取）
             self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
             self.serial_comm.write_register(self.green_light, False, timeout=0.5)
             self.tag_history.clear()
-            self.rfid_reader_serial.startloop()
-            # if self.rfid_reader.get_connection_status():
-            #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
-            #         self.add_message("发送开始生产指令成功")
-            #     else:
-            #         self.add_message("发送开始生产指令失败")
-            # else:
-            #     self.add_message("RFID读写器未连接，无法发送指令")
+            self.write_done = False
+            self.write_in_progress = False
         else:
-            # 发送紧急停止指令到RFID读写器
+            # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
             self.rfid_reader_serial.stoploop()
-            # if self.rfid_reader.get_connection_status():
-            #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
-            #         self.add_message("发送紧急停止指令成功")
-            #     else:
-            #         self.add_message("发送紧急停止指令失败")
-            # else:
-            #     self.add_message("RFID读写器未连接，无法发送指令")
 
     # RFID读写器相关方法
     def auto_connect(self):
@@ -930,41 +928,64 @@ class RFIDProductionSystem:
                 f"RSSI: {tag.rssi:.1f}dBm "
                 f"天线: {tag.antenna_num}")
 
-    def update_ui_with_reported_tags(self, tag_data, data_type, barcodes=None):
-        """用上报的标签数据更新UI"""
+    def update_ui_with_reported_tags(self, tag_data, data_type, barcodes=None, validation=None):
+        """用上报的标签数据更新UI（含写入校验结果）"""
         if barcodes is None:
             barcodes = []
+        if validation is None:
+            validation = {}
 
-        # 清空之前的显示
         self.update_element_text(self.fetch_text, "", clear_first=True)
 
         if not tag_data and not barcodes:
             return
 
-        # 创建显示文本
         display_lines = []
         direction_text = "入库" if data_type == DATA_TYPE_INBOUND else "出库"
 
         display_lines.append(f"=== 本次{direction_text}完成 ===")
 
+        # 显示写入校验结果
+        if self.write_done:
+            verified = validation.get('write_verified_count', 0)
+            total = validation.get('write_total_count', 0)
+            if total > 0 and verified == total:
+                display_lines.append(f"写入校验: 通过 ({verified}/{total}个标签USER_DATA匹配)")
+            elif total > 0:
+                display_lines.append(f"写入校验: 失败 ({verified}/{total}个标签USER_DATA匹配)")
+            else:
+                display_lines.append("写入校验: 写入成功，未读到标签")
+        else:
+            display_lines.append("写入校验: 写标签未执行或失败")
+
+        # 数量比对
+        if validation.get('errors'):
+            for err in validation['errors']:
+                display_lines.append(f"异常: {err}")
+        elif tag_data and barcodes:
+            if len(tag_data) == len(barcodes):
+                display_lines.append(f"数量校验: 通过 (标签{len(tag_data)}个 = 条码{len(barcodes)}个)")
+            else:
+                display_lines.append(
+                    f"数量校验: 不一致 (标签{len(tag_data)}个, 条码{len(barcodes)}个)")
+
         # 显示RFID标签
         if tag_data:
-            display_lines.append(f"RFID标签 ({len(tag_data)}个):")
+            display_lines.append(f"\nRFID标签 ({len(tag_data)}个):")
             for i, tag in enumerate(tag_data, 1):
-                display_lines.append(f"{i}. 产品: {tag['product_name']}  EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
-                # display_lines.append(f"   EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
+                verify_mark = "✓" if tag.get('write_verified', False) else "✗"
+                display_lines.append(
+                    f"{i}. [{verify_mark}] 产品: {tag['product_name']}  EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
 
         # 显示条码
         if barcodes:
-            display_lines.append(f"条码 ({len(barcodes)}个):")
+            display_lines.append(f"\n条码 ({len(barcodes)}个):")
             for i, barcode in enumerate(barcodes, 1):
                 display_lines.append(f"{i}. {barcode}")
 
-        # 更新UI显示
         display_text = "\n".join(display_lines)
         self.update_element_text(self.fetch_text, display_text, clear_first=False)
 
-        # 添加消息
         msg = f"{direction_text}完成"
         if tag_data:
             msg += f"，{len(tag_data)}个标签"
@@ -1270,7 +1291,7 @@ class RFIDProductionSystem:
             return False
 
     def report_rfid_tags_via_mqtt(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
-        """通过MQTT报告RFID标签"""
+        """通过MQTT报告RFID标签（含写入校验结果）"""
         print(f"report_rfid_tags_via_mqtt type={data_type}")
         print(f"当前列表长度: {len(self.tag_history)}")
 
@@ -1278,11 +1299,18 @@ class RFIDProductionSystem:
             barcodes = []
 
         if self.tag_history or barcodes:
-            # 可以发送最近的标签信息
-            recent_tags = self.tag_history[:]  # 发送所有标签
+            recent_tags = self.tag_history[:]
             tag_data = []
+            write_match_count = 0
             for tag in recent_tags:
                 if tag.success:
+                    # 校验读回的 user_data 是否与写入的固定内容一致
+                    read_user_data = tag.user_data.replace(' ', '').upper()
+                    written_user_data = self.FIXED_USER_DATA.hex().upper()
+                    user_data_match = (read_user_data == written_user_data)
+                    if user_data_match:
+                        write_match_count += 1
+
                     tag_data.append({
                         'epc': tag.epc,
                         'tid': tag.tid,
@@ -1290,7 +1318,8 @@ class RFIDProductionSystem:
                         'rssi': tag.rssi,
                         'timestamp': tag.timestamp,
                         'product_name': tag.product_name,
-                        'antenna_num': tag.antenna_num
+                        'antenna_num': tag.antenna_num,
+                        'write_verified': user_data_match
                     })
 
             if tag_data or barcodes:
@@ -1302,22 +1331,38 @@ class RFIDProductionSystem:
                     self.outbound_total += len(tag_data)
                     self.outbound_label.config(text=str(self.outbound_total))
 
-                # 关键修改：更新识别总量为入库总量和出库总量之和
                 self.daily_production = self.inbound_total + self.outbound_total
                 self.daily_label.config(text=str(self.daily_production))
 
-                # 构建上报数据，包含条码
+                # 校验结果汇总
+                validation = {
+                    'tag_count': len(tag_data),
+                    'barcode_count': len(barcodes),
+                    'write_verified_count': write_match_count,
+                    'write_total_count': len(tag_data),
+                    'tag_barcode_match': len(tag_data) == len(barcodes),
+                    'errors': []
+                }
+                if write_match_count < len(tag_data):
+                    validation['errors'].append(
+                        f"写入校验失败: {len(tag_data) - write_match_count}个标签USER_DATA不匹配")
+                if len(tag_data) != len(barcodes):
+                    validation['errors'].append(
+                        f"数量不一致: 标签{len(tag_data)}个, 条码{len(barcodes)}个")
+
+                # 构建上报数据
                 report_data = {
                     'tags': tag_data,
-                    'barcodes': barcodes
+                    'barcodes': barcodes,
+                    'validation': validation,
+                    'write_success': self.write_done
                 }
 
                 result = self.send_mqtt_command('report_tags', data_type, report_data)
-                # if result:
-                # 上报成功，更新UI显示
-                self.update_ui_with_reported_tags(tag_data, data_type, barcodes)
+                self.update_ui_with_reported_tags(tag_data, data_type, barcodes, validation)
 
-                self.tag_history.clear()  # 报告后清空历史记录
+                self.tag_history.clear()
+                self.write_done = False
                 return result
         else:
             self.add_message("没有可报告的RFID标签数据")
@@ -1474,6 +1519,8 @@ class RFIDProductionSystem:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
                                                 current_state = STATE_INBOUND_MIDDLE
                                                 print("入库中间：光栅1+2同时遮挡")
+                                                if not self.write_done and not self.write_in_progress:
+                                                    self._execute_fixed_write()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_INBOUND_END
                                                 print("入库路径2：光栅1遮挡后直接无遮挡")
@@ -1486,17 +1533,27 @@ class RFIDProductionSystem:
                                                 current_state = STATE_INBOUND_END
                                                 print("入库结束：光栅2遮挡")
                                             elif current_status == 0x00:  # 无遮挡
-                                                # 入库中断
-                                                current_state = STATE_IDLE
-                                                self.direction = 0
-                                                self.start_rfid_loop_query(False)
-                                                process_start_time = None
-                                                self.tag_history.clear()  # 清空未完成的标签
-
-                                                # 新增：中断时也清空条码缓存
-                                                self.clear_barcode_cache()
-
-                                                print("入库中断：中间状态检测到无遮挡")
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"入库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 入库中断
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("入库中断：中间状态检测到无遮挡")
 
                                         elif current_state == STATE_INBOUND_END:
                                             if current_status == 0x02:  # 光栅2遮挡
@@ -1535,6 +1592,8 @@ class RFIDProductionSystem:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
                                                 current_state = STATE_OUTBOUND_MIDDLE
                                                 print("出库中间：光栅1+2同时遮挡")
+                                                if not self.write_done and not self.write_in_progress:
+                                                    self._execute_fixed_write()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库路径2：光栅2遮挡后直接无遮挡")
@@ -1547,17 +1606,27 @@ class RFIDProductionSystem:
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库结束：光栅1遮挡")
                                             elif current_status == 0x00:  # 无遮挡
-                                                # 出库中断
-                                                current_state = STATE_IDLE
-                                                self.direction = 0
-                                                self.start_rfid_loop_query(False)
-                                                process_start_time = None
-                                                self.tag_history.clear()  # 清空未完成的标签
-
-                                                # 新增：中断时也清空条码缓存
-                                                self.clear_barcode_cache()
-
-                                                print("出库中断：中间状态检测到无遮挡")
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"出库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 出库中断
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("出库中断：中间状态检测到无遮挡")
 
                                         elif current_state == STATE_OUTBOUND_END:
                                             if current_status == 0x01:  # 光栅1遮挡
@@ -1900,7 +1969,7 @@ class RFIDProductionSystem:
                 #     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11
                 # ])
                 # user_data = bytes([
-                #     0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+                #     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
                 #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
                 # ])
                 # self.rfid_reader_serial.write_tag_with_userdata(user_data)
@@ -2058,6 +2127,34 @@ class RFIDProductionSystem:
             self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
         else:
             self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
+
+    def _execute_fixed_write(self):
+        """同步执行固定内容写标签，写成功后启动验证读取（在状态机线程中调用）"""
+        self.write_in_progress = True
+        self.add_message(f"开始写入固定标签内容: {self.fixed_user_data_hex}")
+
+        success = self.rfid_reader_serial.write_tag_with_userdata(self.FIXED_USER_DATA)
+        if success:
+            self.write_done = True
+            self.write_in_progress = False
+            self.add_message("写标签成功，启动验证读取...")
+            self.rfid_reader_serial.startloop()
+            return True
+        else:
+            self.add_message("写标签失败，重试中...")
+            success = self.rfid_reader_serial.write_tag_with_userdata(self.FIXED_USER_DATA)
+            if success:
+                self.write_done = True
+                self.write_in_progress = False
+                self.add_message("重试写标签成功，启动验证读取...")
+                self.rfid_reader_serial.startloop()
+                return True
+            else:
+                self.write_done = False
+                self.write_in_progress = False
+                self.add_message("写标签失败（已重试），读取原始标签...")
+                self.rfid_reader_serial.startloop()
+                return False
 
     def on_rfid_write_result(self, success: bool):
         """写标签结果回调，控制灯光"""
