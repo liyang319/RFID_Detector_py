@@ -118,12 +118,15 @@ class RFIDProductionSystem:
         self.green_light = 0x04
         self.beep_ctrl = 0x06
 
-        # 固定写入标签内容（20字节）
+        # 默认写入标签内容（20字节），TCP未下发时使用
         self.FIXED_USER_DATA = bytes([
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
             0xAA, 0xAA, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD, 0xDD, 0xEE, 0xEE
         ])
-        self.fixed_user_data_hex = ' '.join(f'{b:02X}' for b in self.FIXED_USER_DATA)
+
+        # TCP下发的写入数据（优先使用）及实际写入的数据（用于校验对比）
+        self.pending_write_data = None
+        self.actual_write_data = None
 
         # 写入状态跟踪
         self.write_done = False
@@ -1304,9 +1307,12 @@ class RFIDProductionSystem:
             write_match_count = 0
             for tag in recent_tags:
                 if tag.success:
-                    # 校验读回的 user_data 是否与写入的固定内容一致
+                    # 校验读回的 user_data 是否与写入的内容一致
                     read_user_data = tag.user_data.replace(' ', '').upper()
-                    written_user_data = self.FIXED_USER_DATA.hex().upper()
+                    if self.actual_write_data:
+                        written_user_data = self.actual_write_data.hex().upper()
+                    else:
+                        written_user_data = self.FIXED_USER_DATA.hex().upper()
                     user_data_match = (read_user_data == written_user_data)
                     if user_data_match:
                         write_match_count += 1
@@ -1363,6 +1369,8 @@ class RFIDProductionSystem:
 
                 self.tag_history.clear()
                 self.write_done = False
+                self.pending_write_data = None
+                self.actual_write_data = None
                 return result
         else:
             self.add_message("没有可报告的RFID标签数据")
@@ -1930,6 +1938,14 @@ class RFIDProductionSystem:
                 self.add_message(f"启动 TCP Server 失败: {e}")
         threading.Thread(target=run_server, daemon=True).start()
 
+    def _parse_tcp_write_data(self, data: bytes):
+        """从TCP收到的原始字节解析写入数据（不足20字节补0x00，超出截断）"""
+        if len(data) < 20:
+            return data + bytes(20 - len(data))
+        elif len(data) > 20:
+            return data[:20]
+        return data
+
     def on_tcp_message(self, data: bytes, addr):
         """
         收到 TCP 客户端消息时的回调
@@ -1947,6 +1963,19 @@ class RFIDProductionSystem:
         # 记录日志（通过 UI 的消息区域显示）
         self.add_message(f"TCP 客户端 [{addr[0]}:{addr[1]}] 发来: {msg}")
 
+        # 尝试解析 JSON 格式: {"type": "rfid", "data": [48, 50, ...]}
+        try:
+            json_data = json.loads(msg)
+            if isinstance(json_data, dict) and json_data.get("type") == "rfid" and "data" in json_data:
+                data_bytes = bytes(json_data["data"])
+                write_data = self._parse_tcp_write_data(data_bytes)
+                self.pending_write_data = write_data
+                hex_str = ' '.join(f'{b:02X}' for b in write_data)
+                self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
+                return
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+
         # 可选：根据消息内容执行相应操作（如控制设备）
         # 注意：此回调在 TCP 子线程中运行，如需更新 UI 请使用 root.after
         # 示例：如果收到 "stop"，则执行紧急制动
@@ -1958,6 +1987,12 @@ class RFIDProductionSystem:
             # 回复当前状态
             status = f"运行中: {self.is_running}, 当前识别数量: {self.current_load}"
             self.tcp_server.send_to_all(status)
+        else:
+            # 尝试解析为标签写入数据
+            write_data = self._parse_tcp_write_data(data)
+            self.pending_write_data = write_data
+            hex_str = ' '.join(f'{b:02X}' for b in write_data)
+            self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
         # 更多自定义命令可在此扩展
 
     def start_rfid_reader_serial(self):
@@ -2137,11 +2172,17 @@ class RFIDProductionSystem:
             self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
 
     def _execute_fixed_write(self):
-        """同步执行固定内容写标签，写成功后启动验证读取（在状态机线程中调用）"""
+        """同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取（在状态机线程中调用）"""
         self.write_in_progress = True
-        self.add_message(f"开始写入固定标签内容: {self.fixed_user_data_hex}")
 
-        success = self.rfid_reader_serial.write_tag_with_userdata(self.FIXED_USER_DATA)
+        # 优先使用TCP下发的数据，否则使用固定默认数据
+        write_data = self.pending_write_data if self.pending_write_data else self.FIXED_USER_DATA
+        self.actual_write_data = write_data  # 记录实际写入的数据，用于后续校验
+        data_hex = ' '.join(f'{b:02X}' for b in write_data)
+        source = "TCP下发" if self.pending_write_data else "默认"
+        self.add_message(f"开始写入标签内容({source}): {data_hex}")
+
+        success = self.rfid_reader_serial.write_tag_with_userdata(write_data)
         if success:
             self.write_done = True
             self.write_in_progress = False
@@ -2150,7 +2191,7 @@ class RFIDProductionSystem:
             return True
         else:
             self.add_message("写标签失败，重试中...")
-            success = self.rfid_reader_serial.write_tag_with_userdata(self.FIXED_USER_DATA)
+            success = self.rfid_reader_serial.write_tag_with_userdata(write_data)
             if success:
                 self.write_done = True
                 self.write_in_progress = False
