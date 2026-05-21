@@ -2178,7 +2178,15 @@ class RFIDProductionSystem:
             # 添加日志消息
             self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
         else:
-            self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
+            # 写入完成后读回的标签，EPC相同但USER_DATA已更新，覆盖旧数据
+            if self.write_done:
+                for existing_tag in self.tag_history:
+                    if existing_tag.epc == tag.epc:
+                        existing_tag.user_data = tag.user_data
+                        self.add_message(f"串口RFID更新已写入标签数据，EPC: {tag.epc}")
+                        break
+            else:
+                self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
 
     def _execute_fixed_write(self):
         """同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取（在状态机线程中调用）"""
