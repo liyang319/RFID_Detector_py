@@ -1375,7 +1375,6 @@ class RFIDProductionSystem:
 
                 self.tag_history.clear()
                 self.write_done = False
-                self.pending_write_data = None
                 self.actual_write_data = None
                 return result
         else:
