@@ -608,6 +608,7 @@ class RFIDProductionSystem:
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
             self.add_message("手动停止：绿灯亮，停止RFID读取")
+            self._display_tags_in_fetch()
 
     def emergency_stop(self):
         """紧急制动"""
@@ -632,6 +633,7 @@ class RFIDProductionSystem:
         self.serial_comm.write_register(self.green_light, True, timeout=0.5)
         self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
         self.add_message("手动停止：绿灯亮，停止RFID读取")
+        self._display_tags_in_fetch()
         messagebox.showwarning("手动停止", "数据已经上报！")
 
     def start_rfid_loop_query(self, b_on):
@@ -922,6 +924,20 @@ class RFIDProductionSystem:
                 self.add_message(f"检测到重复标签，TID: {tag.tid} 已存在")
         else:
             self.add_message(f"标签解析失败: {tag.error_message}")
+
+    def _display_tags_in_fetch(self):
+        """将当前tag_history中的标签显示在取标内容窗口"""
+        if not self.tag_history:
+            self.update_element_text(self.fetch_text, "暂无识别到的标签", clear_first=True)
+            return
+
+        display_lines = [f"=== 手动停止，识别到 {len(self.tag_history)} 个标签 ==="]
+        for i, tag in enumerate(self.tag_history, 1):
+            display_lines.append(
+                f"{i}. EPC: {tag.epc}  USER: {tag.user_data}  "
+                f"RSSI: {tag.rssi:.1f}dBm  天线: {tag.antenna_num}")
+        display_text = "\n".join(display_lines)
+        self.update_element_text(self.fetch_text, display_text, clear_first=True)
 
     def _format_tag_display(self, tag: RFIDTag) -> str:
         """格式化标签信息用于显示"""
