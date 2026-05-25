@@ -16,9 +16,12 @@ from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-SERIAL_COM_IO = "/dev/tty.usbserial-14240"
-SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
+# SERIAL_COM_IO = "/dev/tty.usbserial-14240"
+# SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+# SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
+SERIAL_COM_IO = "/dev/ttyS0"
+SERIAL_COM_RFID_READER = "/dev/ttysWK3"
+SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
 
 
 class RFIDProductionSystem:
@@ -586,6 +589,7 @@ class RFIDProductionSystem:
         """切换产线运行状态 - 主要修改部分"""
         self.is_running = not self.is_running
         if self.is_running:
+            print("running")
             # 发送开始生产指令到RFID读写器
             # if self.rfid_reader.get_connection_status():
             #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_START'):
@@ -594,7 +598,16 @@ class RFIDProductionSystem:
             #         self.add_message("发送开始生产指令失败")
             # else:
             #     self.add_message("RFID读写器未连接，无法发送指令")
-            pass
+            self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
+            self.serial_comm.write_register(self.green_light, False, timeout=0.5)
+            self.rfid_reader_serial.startloop()
+            self.add_message("手动运行：黄灯亮，启动RFID读取")
+        else:
+            print("not running")
+            self.rfid_reader_serial.stoploop()
+            self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+            self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+            self.add_message("手动停止：绿灯亮，停止RFID读取")
 
     def emergency_stop(self):
         """紧急制动"""
@@ -615,6 +628,10 @@ class RFIDProductionSystem:
         # else:
         #     self.add_message("RFID读写器未连接，无法发送指令")
 
+        self.rfid_reader_serial.stoploop()
+        self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+        self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+        self.add_message("手动停止：绿灯亮，停止RFID读取")
         messagebox.showwarning("手动停止", "数据已经上报！")
 
     def start_rfid_loop_query(self, b_on):
