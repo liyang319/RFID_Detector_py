@@ -2073,13 +2073,14 @@ class RFIDProductionSystem:
 
         while True:
             tag, consumed = self._try_parse_one_packet(self.serial_rfid_buffer)
-            if tag is not None and consumed > 0:
-                # 移除已处理的数据
+            if consumed > 0:
+                # 移除已处理的数据（无论解析是否成功，都清掉已消费的字节）
                 self.serial_rfid_buffer = self.serial_rfid_buffer[consumed:]
-                # 在主线程中处理标签
-                self.root.after(0, lambda t=tag: self._add_serial_tag_to_history(t))
+                if tag is not None:
+                    # 在主线程中处理标签
+                    self.root.after(0, lambda t=tag: self._add_serial_tag_to_history(t))
             else:
-                # 无法继续解析，退出循环
+                # 无法继续解析，等待更多数据
                 break
 
     def _try_parse_one_packet(self, buffer: bytearray):

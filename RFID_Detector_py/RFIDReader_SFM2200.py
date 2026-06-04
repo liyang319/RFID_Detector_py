@@ -159,7 +159,7 @@ class RFIDReader_SFM2200:
                         if len(tag_buffer) < 36:
                             break
                         epc_len = tag_buffer[35]
-                        total_len = 42 + epc_len   # 7头 + 35固定 + epc_len
+                        total_len = 38 + epc_len   # 固定头38字节 + EPC长度(含附加数据)
                         if len(tag_buffer) < total_len:
                             break
                         # 提取完整正常包
