@@ -161,6 +161,7 @@ class RFIDProductionSystem:
         # self.serial_comm = SerialComm('/dev/ttyS0', 9600)
         self.serial_reading_active = False  # 串口读取线程状态标志
         self.bar_scanner = None
+        self.barcode_reported = False  # 当前出入库操作是否已上报条码
 
         # RFID读写器（串口版，新增）
         self.rfid_reader_serial = RFIDReader_SFM2200(
@@ -1335,6 +1336,12 @@ class RFIDProductionSystem:
         msg = json.dumps({"type": "pass", "number": tag_count}, ensure_ascii=False)
         self.tcp_server.send_to_all(msg)
 
+    def _send_tcp_report_barcode_message(self, barcode: str):
+        """通过TCP向连接的客户端发送条码数据"""
+        msg = json.dumps({"type": "report_barcode", "barcode": barcode}, ensure_ascii=False)
+        self.tcp_server.send_to_all(msg)
+        self.add_message(f"TCP发送: report_barcode {barcode}")
+
     def _send_tcp_cargo_in_message(self):
         """通过TCP向连接的客户端发送货物进入消息"""
         msg = json.dumps({"type": "cargo_in"}, ensure_ascii=False)
@@ -1948,6 +1955,10 @@ class RFIDProductionSystem:
             if not barcode:
                 return
             print(barcode)
+            # 每次出入库操作只上报一次条码
+            if not self.barcode_reported:
+                self.barcode_reported = True
+                self._send_tcp_report_barcode_message(barcode)
             # 在主线程中更新UI
             # self.root.after(0, lambda: self._handle_barcode_ui_update(barcode))
 
@@ -2006,6 +2017,7 @@ class RFIDProductionSystem:
 
     def clear_barcode_cache(self):
         """清空条码缓存"""
+        self.barcode_reported = False
         if hasattr(self, 'bar_scanner') and self.bar_scanner:
             with self.bar_scanner.lock:
                 self.bar_scanner.barcode_queue.clear()
