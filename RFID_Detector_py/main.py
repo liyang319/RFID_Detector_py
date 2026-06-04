@@ -1990,54 +1990,116 @@ class RFIDProductionSystem:
             return data[:20]
         return data
 
+    # def on_tcp_message(self, data: bytes, addr):
+    #     """
+    #     收到 TCP 客户端消息时的回调
+    #     :param data: 原始字节数据
+    #     :param addr: 客户端地址 (ip, port)
+    #     """
+    #     print('on_tcp_message')
+    #     # 将数据解码为字符串（假设客户端发送 UTF-8 文本）
+    #     try:
+    #         msg = data.decode('utf-8').strip()
+    #         print(msg)
+    #     except UnicodeDecodeError:
+    #         msg = data.hex()
+    #
+    #     # 记录日志（通过 UI 的消息区域显示）
+    #     self.add_message(f"TCP 客户端 [{addr[0]}:{addr[1]}] 发来: {msg}")
+    #
+    #     # 尝试解析 JSON 格式: {"type": "rfid", "data": [48, 50, ...]}
+    #     try:
+    #         json_data = json.loads(msg)
+    #         if isinstance(json_data, dict) and json_data.get("type") == "rfid" and "data" in json_data:
+    #             data_bytes = bytes(json_data["data"])
+    #             write_data = self._parse_tcp_write_data(data_bytes)
+    #             self.pending_write_data = write_data
+    #             hex_str = ' '.join(f'{b:02X}' for b in write_data)
+    #             self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
+    #             return
+    #     except (json.JSONDecodeError, ValueError, TypeError):
+    #         pass
+    #
+    #     # 可选：根据消息内容执行相应操作（如控制设备）
+    #     # 注意：此回调在 TCP 子线程中运行，如需更新 UI 请使用 root.after
+    #     # 示例：如果收到 "stop"，则执行紧急制动
+    #     if msg.lower() == "stop":
+    #         self.root.after(0, self.emergency_stop)
+    #     elif msg.lower() == "start":
+    #         self.root.after(0, lambda: self.toggle_production() if not self.is_running else None)
+    #     elif msg.lower() == "status":
+    #         # 回复当前状态
+    #         status = f"运行中: {self.is_running}, 当前识别数量: {self.current_load}"
+    #         self.tcp_server.send_to_all(status)
+    #     else:
+    #         # 尝试解析为标签写入数据
+    #         write_data = self._parse_tcp_write_data(data)
+    #         self.pending_write_data = write_data
+    #         hex_str = ' '.join(f'{b:02X}' for b in write_data)
+    #         self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
+    #     # 更多自定义命令可在此扩展
+
+    def on_cmd_write_epc(self, epc_data: bytes):
+        """TODO: 处理写EPC指令"""
+        print(f"[on_cmd_write_epc] 收到EPC数据: {epc_data.hex().upper()} ({len(epc_data)}字节)")
+        hex_str = ' '.join(f'{b:02X}' for b in epc_data)
+        self.add_message(f"[TODO] 写EPC指令，数据({len(epc_data)}字节): {hex_str}")
+
+    def on_cmd_write_user(self, user_data: bytes):
+        """TODO: 处理写USER_DATA指令"""
+        print(f"[on_cmd_write_user] 收到USER_DATA: {user_data.hex().upper()} ({len(user_data)}字节)")
+        hex_str = ' '.join(f'{b:02X}' for b in user_data)
+        self.add_message(f"[TODO] 写USER_DATA指令，数据({len(user_data)}字节): {hex_str}")
+
     def on_tcp_message(self, data: bytes, addr):
         """
-        收到 TCP 客户端消息时的回调
+        收到 TCP 客户端消息时的回调（新）
+        支持指令格式:
+          {"type": "write_epc",   "epc": [...]}
+          {"type": "write_user",  "user_data": [...]}
         :param data: 原始字节数据
         :param addr: 客户端地址 (ip, port)
         """
         print('on_tcp_message')
-        # 将数据解码为字符串（假设客户端发送 UTF-8 文本）
         try:
             msg = data.decode('utf-8').strip()
             print(msg)
         except UnicodeDecodeError:
-            msg = data.hex()
+            print(f"TCP数据解码失败: {data.hex()}")
+            return
 
-        # 记录日志（通过 UI 的消息区域显示）
         self.add_message(f"TCP 客户端 [{addr[0]}:{addr[1]}] 发来: {msg}")
 
-        # 尝试解析 JSON 格式: {"type": "rfid", "data": [48, 50, ...]}
+        # 尝试解析 JSON
         try:
             json_data = json.loads(msg)
-            if isinstance(json_data, dict) and json_data.get("type") == "rfid" and "data" in json_data:
-                data_bytes = bytes(json_data["data"])
-                write_data = self._parse_tcp_write_data(data_bytes)
-                self.pending_write_data = write_data
-                hex_str = ' '.join(f'{b:02X}' for b in write_data)
-                self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
-                return
         except (json.JSONDecodeError, ValueError, TypeError):
-            pass
+            self.add_message(f"TCP 收到非JSON数据: {msg}")
+            return
 
-        # 可选：根据消息内容执行相应操作（如控制设备）
-        # 注意：此回调在 TCP 子线程中运行，如需更新 UI 请使用 root.after
-        # 示例：如果收到 "stop"，则执行紧急制动
-        if msg.lower() == "stop":
-            self.root.after(0, self.emergency_stop)
-        elif msg.lower() == "start":
-            self.root.after(0, lambda: self.toggle_production() if not self.is_running else None)
-        elif msg.lower() == "status":
-            # 回复当前状态
-            status = f"运行中: {self.is_running}, 当前识别数量: {self.current_load}"
-            self.tcp_server.send_to_all(status)
+        if not isinstance(json_data, dict):
+            return
+
+        cmd_type = json_data.get("type", "")
+
+        if cmd_type == "write_epc":
+            epc_list = json_data.get("epc")
+            if epc_list is None:
+                self.add_message("write_epc指令缺少 'epc' 字段")
+                return
+            epc_data = bytes(epc_list)
+            self.on_cmd_write_epc(epc_data)
+
+        elif cmd_type == "write_user":
+            user_list = json_data.get("user_data")
+            if user_list is None:
+                self.add_message("write_user指令缺少 'user_data' 字段")
+                return
+            user_data = bytes(user_list)
+            self.on_cmd_write_user(user_data)
+
         else:
-            # 尝试解析为标签写入数据
-            write_data = self._parse_tcp_write_data(data)
-            self.pending_write_data = write_data
-            hex_str = ' '.join(f'{b:02X}' for b in write_data)
-            self.add_message(f"收到上位机下发写入数据({len(write_data)}字节): {hex_str}")
-        # 更多自定义命令可在此扩展
+            self.add_message(f"TCP 收到未知指令类型: {cmd_type}")
 
     def start_rfid_reader_serial(self):
         """启动串口 RFID 读写器"""
