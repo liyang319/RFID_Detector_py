@@ -2134,6 +2134,9 @@ class RFIDProductionSystem:
         data_hex = ' '.join(f'{b:02X}' for b in write_data)
         self.add_message(f"TCP指令写USER_DATA({len(write_data)}字节): {data_hex}")
 
+        if self.direction == 0:
+            self.add_message("TCP写USER_DATA忽略：当前不在出入库过程中")
+            return
         if not self.write_done and not self.write_in_progress:
             self.root.after(0, self._execute_fixed_write)
 
