@@ -1372,6 +1372,27 @@ class RFIDProductionSystem:
         self.tcp_server.send_to_all(msg)
         self.add_message(f"TCP发送: report_rfid write_result={write_result}")
 
+    def report_rfid_tags_via_tcp(self):
+        """通过TCP发送RFID标签数据"""
+        if not self.tag_history:
+            return
+        for tag in self.tag_history:
+            if not tag.success:
+                continue
+            read_user_data = tag.user_data.replace(' ', '').upper()
+            if self.actual_write_data:
+                written_user_data = self.actual_write_data.hex().upper()
+            else:
+                written_user_data = self.FIXED_USER_DATA.hex().upper()
+            user_data_match = (read_user_data == written_user_data)
+            write_result_str = "success" if user_data_match else "fail"
+            self._send_tcp_rfid_data_message(
+                tid=tag.tid,
+                epc=tag.epc,
+                user_data=tag.user_data,
+                write_result=write_result_str
+            )
+
     def report_rfid_tags_via_mqtt(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
         """通过MQTT报告RFID标签（含写入校验结果）"""
         print(f"report_rfid_tags_via_mqtt type={data_type}")
@@ -1395,15 +1416,6 @@ class RFIDProductionSystem:
                     user_data_match = (read_user_data == written_user_data)
                     if user_data_match:
                         write_match_count += 1
-
-                    # 通过TCP发送RFID标签数据
-                    write_result_str = "success" if user_data_match else "fail"
-                    self._send_tcp_rfid_data_message(
-                        tid=tag.tid,
-                        epc=tag.epc,
-                        user_data=tag.user_data,
-                        write_result=write_result_str
-                    )
 
                     tag_data.append({
                         'epc': tag.epc,
@@ -1596,6 +1608,7 @@ class RFIDProductionSystem:
                                                 self.start_rfid_loop_query(True)
                                                 process_start_time = time.time()
                                                 print("入库开始：光栅1遮挡")
+                                                self._send_tcp_cargo_in_message()
 
                                                 # 新增：清空条码缓存，开始收集入库条码
                                                 self.clear_barcode_cache()
@@ -1604,14 +1617,13 @@ class RFIDProductionSystem:
                                                 if not self.write_done and not self.write_in_progress:
                                                     self._execute_fixed_write()
 
-                                                self._send_tcp_cargo_in_message()
-
                                             elif current_status == 0x02:  # 光栅2遮挡
                                                 current_state = STATE_OUTBOUND_START
                                                 self.direction = 2
                                                 self.start_rfid_loop_query(True)
                                                 process_start_time = time.time()
                                                 print("出库开始：光栅2遮挡")
+                                                self._send_tcp_cargo_in_message()
 
                                                 # 新增：清空条码缓存，开始收集出库条码
                                                 self.clear_barcode_cache()
@@ -1619,8 +1631,6 @@ class RFIDProductionSystem:
                                                 # 货物进入通道，执行写标签（覆盖Path1和Path2）
                                                 if not self.write_done and not self.write_in_progress:
                                                     self._execute_fixed_write()
-
-                                                self._send_tcp_cargo_in_message()
 
                                         elif current_state == STATE_INBOUND_START:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
@@ -1648,7 +1658,8 @@ class RFIDProductionSystem:
                                                     process_start_time = None
                                                     if current_time - last_report_time >= report_cooldown:
                                                         current_barcodes = self.get_all_barcodes()
-                                                        self._send_tcp_pass_message()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
                                                         self._send_tcp_cargo_out_message()
                                                         self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND,
                                                                                        barcodes=current_barcodes)
@@ -1679,7 +1690,8 @@ class RFIDProductionSystem:
                                                 if current_time - last_report_time >= report_cooldown:
                                                     # 新增：获取本次入库的所有条码
                                                     current_barcodes = self.get_all_barcodes()
-                                                    self._send_tcp_pass_message()
+                                                    # self._send_tcp_pass_message()
+                                                    self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
                                                     self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND,
                                                                                    barcodes=current_barcodes)
@@ -1726,7 +1738,8 @@ class RFIDProductionSystem:
                                                     process_start_time = None
                                                     if current_time - last_report_time >= report_cooldown:
                                                         current_barcodes = self.get_all_barcodes()
-                                                        self._send_tcp_pass_message()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
                                                         self._send_tcp_cargo_out_message()
                                                         self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND,
                                                                                        barcodes=current_barcodes)
@@ -1757,7 +1770,8 @@ class RFIDProductionSystem:
                                                 if current_time - last_report_time >= report_cooldown:
                                                     # 新增：获取本次出库的所有条码
                                                     current_barcodes = self.get_all_barcodes()
-                                                    self._send_tcp_pass_message()
+                                                    # self._send_tcp_pass_message()
+                                                    self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
                                                     self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND,
                                                                                    barcodes=current_barcodes)
@@ -1955,8 +1969,8 @@ class RFIDProductionSystem:
             if not barcode:
                 return
             print(barcode)
-            # 每次出入库操作只上报一次条码
-            if not self.barcode_reported:
+            # 仅在出入库进行中（direction非0）且本批次未上报时，上报条码
+            if self.direction != 0 and not self.barcode_reported:
                 self.barcode_reported = True
                 self._send_tcp_report_barcode_message(barcode)
             # 在主线程中更新UI

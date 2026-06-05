@@ -112,7 +112,7 @@ class BarCodeScanner:
                 return None
 
             # 4. 记录日志
-            self.log_barcode(barcode_str)
+            # self.log_barcode(barcode_str)
 
             return barcode_str
 
