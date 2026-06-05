@@ -1613,9 +1613,9 @@ class RFIDProductionSystem:
                                                 # 新增：清空条码缓存，开始收集入库条码
                                                 self.clear_barcode_cache()
 
-                                                # 货物进入通道，执行写标签（覆盖Path1和Path2）
-                                                if not self.write_done and not self.write_in_progress:
-                                                    self._execute_fixed_write()
+                                                # # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
 
                                             elif current_status == 0x02:  # 光栅2遮挡
                                                 current_state = STATE_OUTBOUND_START
@@ -1628,16 +1628,16 @@ class RFIDProductionSystem:
                                                 # 新增：清空条码缓存，开始收集出库条码
                                                 self.clear_barcode_cache()
 
-                                                # 货物进入通道，执行写标签（覆盖Path1和Path2）
-                                                if not self.write_done and not self.write_in_progress:
-                                                    self._execute_fixed_write()
+                                                # # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
 
                                         elif current_state == STATE_INBOUND_START:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
                                                 current_state = STATE_INBOUND_MIDDLE
                                                 print("入库中间：光栅1+2同时遮挡")
-                                                if not self.write_done and not self.write_in_progress:
-                                                    self._execute_fixed_write()
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_INBOUND_END
                                                 print("入库路径2：光栅1遮挡后直接无遮挡")
@@ -1716,8 +1716,8 @@ class RFIDProductionSystem:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡
                                                 current_state = STATE_OUTBOUND_MIDDLE
                                                 print("出库中间：光栅1+2同时遮挡")
-                                                if not self.write_done and not self.write_in_progress:
-                                                    self._execute_fixed_write()
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库路径2：光栅2遮挡后直接无遮挡")
@@ -2124,10 +2124,18 @@ class RFIDProductionSystem:
         self.add_message(f"[TODO] 写EPC指令，数据({len(epc_data)}字节): {hex_str}")
 
     def on_cmd_write_user(self, user_data: bytes):
-        """TODO: 处理写USER_DATA指令"""
+        """处理写USER_DATA指令：补齐20字节，调用_execute_fixed_write执行写标签"""
         print(f"[on_cmd_write_user] 收到USER_DATA: {user_data.hex().upper()} ({len(user_data)}字节)")
-        hex_str = ' '.join(f'{b:02X}' for b in user_data)
-        self.add_message(f"[TODO] 写USER_DATA指令，数据({len(user_data)}字节): {hex_str}")
+
+        # 补齐/截断到20字节，存入pending_write_data
+        write_data = self._parse_tcp_write_data(user_data)
+        self.pending_write_data = write_data
+
+        data_hex = ' '.join(f'{b:02X}' for b in write_data)
+        self.add_message(f"TCP指令写USER_DATA({len(write_data)}字节): {data_hex}")
+
+        if not self.write_done and not self.write_in_progress:
+            self.root.after(0, self._execute_fixed_write)
 
     def on_tcp_message(self, data: bytes, addr):
         """
