@@ -138,7 +138,8 @@ def build():
         [
             ['1', '全部', '初始版本', '2026-06-10'],
             ['2', '3,4,5,12', '增加设备管理、标签打印管理、运输数据接入、运输监控', '2026-06-18'],
-            ['3', '6,7-12', '重构：将独立业务管理模块整合为产品生命周期状态，统一归入数据管理；明确平台以RFID标签为核心的数字化管理定位', datetime.date.today().isoformat()],
+            ['3', '6,7-12', '重构：将独立业务管理模块整合为产品生命周期状态；明确平台以RFID标签为核心的数字化管理定位', '2026-06-22'],
+            ['4', '4,5,6', '新增4.4标签信息上报第三方平台、5.8工厂原有数据导入(Excel)、6.6数据大屏接口；所有接口报文标注"待定"', datetime.date.today().isoformat()],
         ])
     doc.add_page_break()
 
@@ -150,9 +151,9 @@ def build():
         '1. 系统概述', '   1.1 软件定位', '   1.2 软件目标', '   1.3 硬件支撑', '   1.4 软件组成',
         '2. 用户权限管理', '   2.1 管理员权限', '   2.2 企业用户权限', '   2.3 监管用户权限',
         '3. 终端设备管理', '   3.1 设备类型', '   3.2 设备注册与认证', '   3.3 设备状态监控', '   3.4 设备OTA升级',
-        '4. 标签打印内容管理', '   4.1 打印模板管理', '   4.2 打印信息下发', '   4.3 打印记录追溯',
-        '5. 数据采集与接入', '   5.1 产线通道机数据上报', '   5.2 廊机数据上报', '   5.3 手持设备数据接入', '   5.4 销售端数据接入', '   5.5 爆破作业数据接入', '   5.6 靶试实验（科研）数据接入', '   5.7 运输数据接入', '   5.8 第三方平台数据对接',
-        '6. 数据管理', '   6.1 产品全生命周期状态', '   6.2 多维度数据查询', '   6.3 数据统计', '   6.4 报表生成', '   6.5 数据接口',
+        '4. 标签打印内容管理', '   4.1 打印模板管理', '   4.2 打印信息下发', '   4.3 打印记录追溯', '   4.4 标签信息上报第三方平台',
+        '5. 数据采集与接入', '   5.1 产线通道机数据上报', '   5.2 廊机数据上报', '   5.3 手持设备数据接入', '   5.4 销售端数据接入', '   5.5 爆破作业数据接入', '   5.6 靶试实验（科研）数据接入', '   5.7 运输数据接入', '   5.8 工厂原有数据导入', '   5.9 第三方平台数据对接',
+        '6. 数据管理', '   6.1 产品全生命周期状态', '   6.2 多维度数据查询', '   6.3 数据统计', '   6.4 报表生成', '   6.5 数据接口', '   6.6 数据大屏接口',
         '7. 系统对接', '   7.1 公安部管理平台对接', '   7.2 行业管理平台对接',
         '8. 告警与通知', '9. 系统设置', '10. 帮助',
     ]
@@ -226,7 +227,7 @@ def build():
     add_list(doc, '升级目标选择：可按设备类型、所属企业、分厂、单个设备等多粒度选择升级目标；')
     add_list(doc, '升级进度监控：实时查看各设备的升级状态（等待中/下载中/安装中/成功/失败）；')
     add_list(doc, '升级失败回滚：升级失败时自动回滚到上一版本，并通知管理员；')
-    add_list(doc, 'OTA升级Topic：firmware/upgrade/{device_id}（平台下发），firmware/status/{device_id}（设备上报状态）。')
+    add_list(doc, 'OTA升级Topic（待定）：firmware/upgrade/{device_id}（平台下发），firmware/status/{device_id}（设备上报状态）。')
 
     # ===== 4. 标签打印内容管理 =====
     add_h1(doc, '4. 标签打印内容管理')
@@ -241,11 +242,11 @@ def build():
     add_h2(doc, '4.2 打印信息下发')
     add_list(doc, '定点下发：选择目标分厂→产线，将指定的打印内容模板下发到对应产线的标签打印机或通道机；')
     add_list(doc, '下发内容格式：JSON格式，包含模板的所有字段值，通过MQTT下发到产线设备；')
-    add_list(doc, '下发Topic：printer/content/{factory_id}/{line_id}（平台→设备）；')
+    add_list(doc, '下发Topic（待定）：printer/content/{factory_id}/{line_id}（平台→设备）；')
     add_list(doc, '下发确认：设备收到打印信息后回复确认消息，平台记录下发状态；')
     add_list(doc, '批量下发：支持同时向多个分厂、多条产线下发相同或不同的打印内容；')
     add_list(doc, '下发历史：记录每次下发的目标、内容、时间、操作人，支持追溯查询。')
-    add_normal(doc, '下发数据格式示例：', bold=True)
+    add_normal(doc, '下发数据格式示例（待定）：', bold=True)
     print_fmt = '''{
     "type": "print_content",
     "factory_id": "F001",
@@ -270,14 +271,40 @@ def build():
     add_list(doc, '支持按时间范围、分厂、产线、产品类型等维度查询打印历史记录；')
     add_list(doc, '打印记录与后续生产数据通过EPC号关联，实现"打印内容下发→标签写入→读取校验→数据上报"全链路追溯。')
 
+    add_h2(doc, '4.4 标签信息上报第三方平台')
+    add_normal(doc, '支持将当前打印生产的标签信息，自动或手动上报到第三方数据平台（如公安部管理平台）。')
+    add_list(doc, '上报触发方式：支持标签打印完成后自动上报，或通过平台界面手动选择批次上报；')
+    add_list(doc, '上报数据内容：包含标签打印模板的全部字段（产品类型、规格型号、生产厂家、许可证号、生产日期、批号、数量等）及对应的EPC号、TID号列表；')
+    add_list(doc, '上报方式：通过平台配置的第三方接口（RESTful API）发送JSON格式数据，接口地址和认证信息在"系统设置→数据对接配置"中配置；')
+    add_list(doc, '上报状态跟踪：记录每次上报的时间、目标平台、数据量、成功/失败状态，失败时支持重试和告警；')
+    add_list(doc, '上报数据格式（待定）：')
+    report_fmt = '''{
+    "type": "label_report",
+    "report_time": "2026-06-23T10:00:00",
+    "factory_id": "F001",
+    "line_id": "L03",
+    "batch_number": "BATCH-20260623-001",
+    "labels": [{
+        "epc": "C090C000000A4B28",
+        "tid": "",
+        "product_name": "乳化炸药",
+        "package_spec": "Φ32mm×200g",
+        "manufacturer": "XX化工有限公司",
+        "license_number": "SC20240001",
+        "production_date": "2026-06-23",
+        "quantity": 24
+    }]
+}'''
+    add_code(doc, report_fmt)
+
     # ===== 5. 数据采集与接入 =====
     add_h1(doc, '5. 数据采集与接入')
     add_normal(doc, '平台数据来源分为六种状态类型：生产、入库、出库、销售、爆破作业、靶试实验（科研）。其中生产数据由产线通道机通过MQTT自动上报，入库和出库数据由廊机上报，销售和爆破作业数据通过手持设备或Web端录入上报，靶试实验数据通过专用接口上报，运输数据由手持设备或车载终端实时上报。')
 
     add_h2(doc, '5.1 产线通道机数据上报（生产）')
     add_normal(doc, '通道机（RFID标签识别系统）在完成标签写入、读取校验后，通过MQTT协议向平台上报数据。')
-    add_normal(doc, 'MQTT上报Topic：rfid/data/{device_id}', bold=True)
-    add_normal(doc, '上报数据格式：', bold=True)
+    add_normal(doc, 'MQTT上报Topic（待定）：rfid/data/{device_id}', bold=True)
+    add_normal(doc, '上报数据格式（待定）：', bold=True)
     mqtt_fmt = '''{
     "cmd": "report_tags",
     "type": "inbound",
@@ -312,7 +339,7 @@ def build():
     }
 }'''
     add_code(doc, mqtt_fmt)
-    add_normal(doc, '通道机也通过TCP发送实时消息（report_rfid / report_barcode / cargo_in / cargo_out / pass），平台可建立TCP连接接收。')
+    add_normal(doc, '通道机也通过TCP发送实时消息（待定）（report_rfid / report_barcode / cargo_in / cargo_out / pass），平台可建立TCP连接接收。')
     add_normal(doc, '生产端数据字段：', bold=True)
     make_table(doc,
         ['字段名', '类型', '说明', '来源'],
@@ -337,8 +364,8 @@ def build():
     add_h2(doc, '5.2 廊机数据上报（入库/出库）')
     add_normal(doc, '廊机安装在库房门廊处，自动识别经过门廊的货物标签（入库或出库），并通过MQTT向平台上报数据。')
     add_list(doc, '廊机识别方向：通过内置光栅或红外传感器判断货物移动方向（入库/出库），与产线通道机状态机逻辑一致；')
-    add_list(doc, '上报数据格式：与产线通道机相同，通过MQTT report_tags上报，data_type为"inbound"或"outbound"；')
-    add_list(doc, '廊机也通过TCP发送实时消息（cargo_in / cargo_out / report_rfid / report_barcode），平台可建立TCP连接接收。')
+    add_list(doc, '上报数据格式（待定）：与产线通道机相同，通过MQTT report_tags上报，data_type为"inbound"或"outbound"；')
+    add_list(doc, '廊机也通过TCP发送实时消息（待定）（cargo_in / cargo_out / report_rfid / report_barcode），平台可建立TCP连接接收。')
 
     add_h2(doc, '5.3 手持设备数据接入')
     add_normal(doc, '手持设备用于销售现场、爆破作业现场、运输途中等场景的数据采集和上报。')
@@ -418,10 +445,38 @@ def build():
             ['destination', 'string', '目的地'],
             ['transport_status', 'string', '运输状态：出发/在途/到达/异常'],
         ])
-    add_list(doc, '运输数据上报Topic：transport/data/{transport_id}（MQTT）；')
+    add_list(doc, '运输数据上报Topic（待定）：transport/data/{transport_id}（MQTT）；')
     add_list(doc, '上报频率：正常行驶时每30秒上报一次位置，异常事件（停车超时、偏离路线等）立即上报。')
 
-    add_h2(doc, '5.8 第三方平台数据对接')
+    add_h2(doc, '5.8 工厂原有数据导入')
+    add_normal(doc, '支持导入工厂原有系统中的产品数据，以Excel文件（.xlsx/.xls）的形式批量导入平台，实现历史数据的统一管理。')
+    add_list(doc, '导入文件格式：Excel (.xlsx/.xls)，支持单个文件或批量文件夹导入；')
+    add_list(doc, '导入数据字段映射（待定）：平台提供字段映射配置界面，将Excel列名映射到平台标准数据字段（EPC号、TID号、产品类型、规格型号、生产厂家、许可证号、生产日期、批号等），映射关系可保存为模板复用；')
+    add_list(doc, '数据校验：导入时自动校验数据格式完整性、EPC号唯一性、必填字段是否缺失，校验不通过的数据行生成错误报告，支持下载查看和修正后重新导入；')
+    add_list(doc, '重复处理策略：支持"跳过重复"（EPC号已存在则跳过）、"覆盖更新"（EPC号已存在则更新字段）、"仅导入新数据"三种策略；')
+    add_list(doc, '导入进度：显示导入进度条、已导入/总计/跳过/错误数量统计；')
+    add_list(doc, '导入记录：保存每次导入的历史记录（文件名、导入时间、操作人、导入数量、成功/失败/跳过数量），支持追溯查询。')
+    add_normal(doc, '导入数据字段映射表示例（待定）：', bold=True)
+    import_fmt = '''{
+    "import_config": {
+        "source": "excel",
+        "field_mapping": {
+            "epc": "EPC编码",
+            "tid": "TID号",
+            "product_name": "产品名称",
+            "package_spec": "规格型号",
+            "manufacturer": "生产企业",
+            "license_number": "许可证号",
+            "production_date": "生产日期",
+            "batch_number": "批号",
+            "quantity": "数量"
+        },
+        "duplicate_policy": "skip"
+    }
+}'''
+    add_code(doc, import_fmt)
+
+    add_h2(doc, '5.9 第三方平台数据对接')
     add_list(doc, '公安部管理平台对接：按《民用爆炸物品信息管理条例》要求，将产品生产、流通、使用数据同步上报至公安部管理平台。')
     add_list(doc, '行业管理平台对接：支持与行业协会或其他监管部门的平台进行数据交换。')
     add_list(doc, '对接方式：通过标准API接口（RESTful/WebService）或消息队列（MQTT/Kafka）进行数据同步。')
@@ -497,8 +552,8 @@ def build():
     add_list(doc, '支持按状态、时间范围、企业等维度筛选；')
     add_list(doc, '返回JSON格式数据，包含产品完整生命周期状态链；')
     add_list(doc, '支持分页查询和大量数据导出；')
-    add_list(doc, '接口认证方式：API Key + Token。')
-    add_normal(doc, '主要API端点：', bold=True)
+    add_list(doc, '接口认证方式（待定）：API Key + Token。')
+    add_normal(doc, '主要API端点（待定）：', bold=True)
     make_table(doc,
         ['端点', '方法', '说明'],
         [
@@ -508,6 +563,29 @@ def build():
             ['/api/v1/statistics', 'GET', '按指定维度和时间范围获取统计数据'],
             ['/api/v1/products/{epc}/timeline', 'GET', '获取单个产品的状态变更时间线'],
             ['/api/v1/devices/{device_id}/data', 'GET', '查询指定设备上报的历史数据'],
+        ])
+
+    add_h2(doc, '6.6 数据大屏接口')
+    add_normal(doc, '平台提供专用的数据大屏接口，支持数据大屏设备通过WebSocket或HTTP REST实时获取产品信息的多维度展示数据。')
+    add_normal(doc, '数据大屏接口（待定）支持以下功能：', bold=True)
+    add_list(doc, '产品生命周期状态实时概览：各状态（已生产/已入库/已出库/运输中/已销售/已使用/异常）的产品数量统计，支持数字和图表展示；')
+    add_list(doc, '地域分布热力图：以地图形式展示产品在全国/全省各地的生产、存储、使用分布情况，支持按产品类型筛选；')
+    add_list(doc, '实时数据滚动：最新上报的产品数据以滚动列表形式实时展示（EPC号、产品类型、状态、时间、位置）；')
+    add_list(doc, '设备在线状态监控：各类型终端设备的在线/离线数量统计，离线设备列表；')
+    add_list(doc, '告警实时推送：最新的告警信息实时弹窗展示（告警类型、时间、设备、详情）；')
+    add_list(doc, '产量/出入库量趋势图：按小时/日/周展示产量和出入库量的趋势折线图或柱状图；')
+    add_list(doc, '运输监控地图：在地图上实时展示所有在途运输车辆的位置、轨迹和状态；')
+    add_list(doc, '数据大屏支持自动轮播切换多个展示页面（可配置轮播间隔），支持手动切换页面。')
+    add_normal(doc, '数据大屏主要接口端点（待定）：', bold=True)
+    make_table(doc,
+        ['端点', '方法', '说明'],
+        [
+            ['/api/v1/dashboard/overview', 'GET', '获取实时概览数据（各状态数量、设备在线数等）'],
+            ['/api/v1/dashboard/geo', 'GET', '获取地域分布数据（热力图坐标点）'],
+            ['/api/v1/dashboard/trend', 'GET', '获取趋势统计数据（产量/出入库量趋势）'],
+            ['/api/v1/dashboard/alerts', 'GET', '获取最新告警列表'],
+            ['/api/v1/dashboard/transport', 'GET', '获取在途运输车辆实时位置和状态'],
+            ['/ws/dashboard/live', 'WebSocket', '实时数据推送（新上报数据、告警推送）'],
         ])
 
     # ===== 7. 系统对接 =====
