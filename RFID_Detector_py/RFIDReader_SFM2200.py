@@ -264,6 +264,54 @@ class RFIDReader_SFM2200:
 
         return success
 
+    def write_tag_with_epcdata(self, epcdata: bytes) -> bool:
+        print('write_tag_with_epcdata')
+        """
+        向 RFID 标签写入 EPC 数据。
+        :param epcdata: 要写入的 EPC 数据，长度必须为 20 字节
+        :return: 是否写入成功
+        """
+        base_template = bytes([
+            0xFF, 0x1C, 0x24, 0x03, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ])
+        if len(epcdata) != 20:
+            print(f"错误：EPC数据长度必须为 20 字节，实际为 {len(epcdata)} 字节")
+            return False
+
+        cmd = base_template[:11] + epcdata
+        cmd_with_crc = self.get_cmd_append_crc(cmd, little_endian=False)
+
+        self.clear_response_queue()
+        if not self.send_command(cmd_with_crc):
+            print("发送指令失败")
+            return False
+
+        response = self.receive_response(timeout=3.0)
+        print(f"响应数据{response}")
+        if not response or len(response) < 5:
+            print(f"响应数据无效: {response.hex() if response else '空'}")
+            return False
+
+        # 检查响应头是否为 FF 00 24
+        if response[0] != 0xFF or response[1] != 0x00 or response[2] != 0x24:
+            print(f"响应头异常: {response[0:3].hex()}")
+            return False
+
+        # 检查状态字节（索引3、4）是否为 0x00
+        success = (response[3] == 0 and response[4] == 0)
+        if success:
+            print("写入EPC数据成功")
+        else:
+            print(f"写入EPC数据失败，状态码: {response[3]:02X}{response[4]:02X}")
+
+        # 调用回调（如果已设置）
+        if self.write_callback:
+            self.write_callback(success)
+
+        return success
+
     def log_data(self, data_bytes):
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
