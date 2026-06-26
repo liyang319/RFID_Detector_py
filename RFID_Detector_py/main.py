@@ -2414,12 +2414,12 @@ class RFIDProductionSystem:
                 return tag
 
             # TID (20字节)
-            tid_bytes = data[15:35]
-            tag.tid = ' '.join(f'{b:02X}' for b in tid_bytes)
+            tid_bytes = data[15:31]
+            tag.tid = ''.join(f'{b:02X}' for b in tid_bytes)
 
             # USER_DATA (20字节)
             user_bytes = data[31:51]
-            tag.user_data = ' '.join(f'{b:02X}' for b in user_bytes)
+            tag.user_data = ''.join(f'{b:02X}' for b in user_bytes)
 
             # EPC (20字节)
             epc_bytes = data[54:74]
