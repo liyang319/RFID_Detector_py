@@ -16,12 +16,12 @@ from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-# SERIAL_COM_IO = "/dev/tty.usbserial-14240"
-# SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-# SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
-SERIAL_COM_IO = "/dev/ttyS0"
-SERIAL_COM_RFID_READER = "/dev/ttysWK3"
-SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
+SERIAL_COM_IO = "/dev/tty.usbserial-14240"
+SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
+# SERIAL_COM_IO = "/dev/ttyS0"
+# SERIAL_COM_RFID_READER = "/dev/ttysWK3"
+# SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
 
 
 class RFIDProductionSystem:
@@ -602,7 +602,7 @@ class RFIDProductionSystem:
             #     self.add_message("RFID读写器未连接，无法发送指令")
             self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
             self.serial_comm.write_register(self.green_light, False, timeout=0.5)
-            self.rfid_reader_serial.startloop()
+            self.rfid_reader_serial.startloop_tid_user()
             self.add_message("手动运行：黄灯亮，启动RFID读取")
         else:
             print("not running")
@@ -2211,19 +2211,19 @@ class RFIDProductionSystem:
                 #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
                 # ])
                 # self.rfid_reader_serial.write_tag_with_userdata(user_data)
-                # self.rfid_reader_serial.startloop()
+                # self.rfid_reader_serial.startloop_tid_user()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
 
         threading.Thread(target=connect, daemon=True).start()
 
     def on_rfid_serial_data(self, data: bytes):
-        """处理串口 RFID 读写器接收到的数据（支持多包连发）"""
+        """处理串口 RFID 读写器接收到的数据（TID+USER格式，支持多包连发）"""
         print(f"[RFID Serial] 收到原始数据 {len(data)} 字节: {data.hex()}")
         self.serial_rfid_buffer.extend(data)
 
         while True:
-            tag, consumed = self._try_parse_one_packet(self.serial_rfid_buffer)
+            tag, consumed = self._try_parse_one_packet_tid_user(self.serial_rfid_buffer)
             if consumed > 0:
                 # 移除已处理的数据（无论解析是否成功，都清掉已消费的字节）
                 self.serial_rfid_buffer = self.serial_rfid_buffer[consumed:]
@@ -2337,6 +2337,110 @@ class RFIDProductionSystem:
             tag.error_message = f"解析异常: {str(e)}"
             return tag
 
+    def _try_parse_one_packet_tid_user(self, buffer: bytearray):
+        """
+        通过查找 FF 47 AA 特征头边界来提取一个完整包（TID+USER格式）。
+        处理正常包（FF 47 AA）和异常包（FF XX AA, XX≠47）混合的情况。
+        返回 (RFIDTag, consumed_bytes)
+        """
+        TID_USER_HEADER = bytes([0xFF, 0x47, 0xAA])
+        header_len = len(TID_USER_HEADER)
+
+        # 查找第一个有效包头位置（FF 47 AA）
+        first_idx = -1
+        for i in range(len(buffer) - header_len + 1):
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
+                if buffer[i + 1] == 0x47:
+                    first_idx = i
+                    break
+                else:
+                    # 异常包（FF XX AA, XX≠47），跳过前3字节继续搜索
+                    pass
+
+        if first_idx == -1:
+            # 检查缓冲区中是否有任何 FF xx AA 开头的数据
+            has_any = False
+            for i in range(len(buffer) - 2):
+                if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
+                    # 找到异常包头，跳过前3字节
+                    print(f"[RFID Serial TID] 跳过异常包头 FF {buffer[i+1]:02X} AA，丢弃3字节")
+                    return None, i + 3
+                    # has_any = True — actually, we break above
+            # 没有找到任何 FF xx AA，丢弃所有数据
+            consumed = len(buffer)
+            print(f"[RFID Serial TID] 未找到有效包头，丢弃 {consumed} 字节")
+            return None, consumed
+
+        if first_idx > 0:
+            # 跳过包头前的无效数据（异常包或残留数据）
+            print(f"[RFID Serial TID] 跳过包头前无效数据 {first_idx} 字节")
+            return None, first_idx
+
+        # 查找第二个有效包头位置（用于确定包结束）
+        second_idx = -1
+        for i in range(first_idx + header_len, len(buffer) - header_len + 1):
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] == 0x47:
+                second_idx = i
+                break
+
+        if second_idx == -1:
+            # 只有一个包，但数据可能不完整，等待更多数据
+            return None, 0
+
+        # 提取从 first_idx 到 second_idx 之间的数据作为一个完整包
+        packet = bytes(buffer[first_idx:second_idx])
+        tag = self._parse_single_serial_packet_tid_user(packet)
+
+        if tag.success:
+            print(f"[RFID Serial TID] 解析成功: TID={tag.tid}, EPC={tag.epc}, USER_DATA={tag.user_data}")
+            return tag, second_idx
+        else:
+            print(f"[RFID Serial TID] 解析失败: {tag.error_message}，跳过当前包头")
+            return None, header_len
+
+    def _parse_single_serial_packet_tid_user(self, data: bytes) -> RFIDTag:
+        """解析一个完整的 TID+USER 格式数据包"""
+        tag = RFIDTag()
+        try:
+            # 协议格式（0-based索引）：
+            # 0-2:   固定头 FF 47 AA
+            # 15-34:  TID 数据 (20字节)
+            # 31-50:  USER_DATA 数据 (20字节)
+            # 54-73:  EPC 数据 (20字节)
+
+            if len(data) < 74:
+                tag.success = False
+                tag.error_message = f"数据长度不足，需要至少74字节，实际 {len(data)}"
+                return tag
+
+            # TID (20字节)
+            tid_bytes = data[15:35]
+            tag.tid = ' '.join(f'{b:02X}' for b in tid_bytes)
+
+            # USER_DATA (20字节)
+            user_bytes = data[31:51]
+            tag.user_data = ' '.join(f'{b:02X}' for b in user_bytes)
+
+            # EPC (20字节)
+            epc_bytes = data[54:74]
+            tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
+
+            # RSSI (尝试从data[7]读取)
+            rssi_byte = data[7]
+            tag.rssi = rssi_byte if rssi_byte < 128 else rssi_byte - 256
+
+            # 天线号 (尝试从data[8]读取)
+            tag.antenna_num = data[8] if len(data) > 8 else 0
+
+            tag.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            tag._parse_product_info()
+            tag.success = True
+            return tag
+        except Exception as e:
+            tag.success = False
+            tag.error_message = f"解析异常: {str(e)}"
+            return tag
+
     def _add_serial_tag_to_history(self, tag: RFIDTag):
         """将串口 RFID 标签添加到历史记录（基于 EPC 去重，更新 UI）"""
         if not tag.success:
@@ -2391,7 +2495,7 @@ class RFIDProductionSystem:
             self.write_done = True
             self.write_in_progress = False
             self.add_message("写标签成功，启动验证读取...")
-            self.rfid_reader_serial.startloop()
+            self.rfid_reader_serial.startloop_tid_user()
             return True
         else:
             self.add_message("写标签失败，重试中...")
@@ -2400,13 +2504,13 @@ class RFIDProductionSystem:
                 self.write_done = True
                 self.write_in_progress = False
                 self.add_message("重试写标签成功，启动验证读取...")
-                self.rfid_reader_serial.startloop()
+                self.rfid_reader_serial.startloop_tid_user()
                 return True
             else:
                 self.write_done = False
                 self.write_in_progress = False
                 self.add_message("写标签失败（已重试），读取原始标签...")
-                self.rfid_reader_serial.startloop()
+                self.rfid_reader_serial.startloop_tid_user()
                 return False
 
     def on_rfid_write_result(self, success: bool):
