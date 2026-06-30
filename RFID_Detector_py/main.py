@@ -122,7 +122,7 @@ class RFIDProductionSystem:
         self.beep_ctrl = 0x06
 
         # 默认写入标签内容（20字节），TCP未下发时使用
-        self.FIXED_USER_DATA = bytes([
+        self.FIXED_DEFAULT_DATA = bytes([
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
             0xAA, 0xAA, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD, 0xDD, 0xEE, 0xEE
         ])
@@ -1383,7 +1383,7 @@ class RFIDProductionSystem:
             if self.actual_write_data:
                 written_user_data = self.actual_write_data.hex().upper()
             else:
-                written_user_data = self.FIXED_USER_DATA.hex().upper()
+                written_user_data = self.FIXED_DEFAULT_DATA.hex().upper()
             user_data_match = (read_user_data == written_user_data)
             write_result_str = "success" if user_data_match else "fail"
             self._send_tcp_rfid_data_message(
@@ -1412,7 +1412,7 @@ class RFIDProductionSystem:
                     if self.actual_write_data:
                         written_user_data = self.actual_write_data.hex().upper()
                     else:
-                        written_user_data = self.FIXED_USER_DATA.hex().upper()
+                        written_user_data = self.FIXED_DEFAULT_DATA.hex().upper()
                     user_data_match = (read_user_data == written_user_data)
                     if user_data_match:
                         write_match_count += 1
@@ -2118,10 +2118,21 @@ class RFIDProductionSystem:
     #     # 更多自定义命令可在此扩展
 
     def on_cmd_write_epc(self, epc_data: bytes):
-        """TODO: 处理写EPC指令"""
+        """处理写EPC指令：补齐20字节，调用_execute_fixed_write执行写EPC"""
         print(f"[on_cmd_write_epc] 收到EPC数据: {epc_data.hex().upper()} ({len(epc_data)}字节)")
-        hex_str = ' '.join(f'{b:02X}' for b in epc_data)
-        self.add_message(f"[TODO] 写EPC指令，数据({len(epc_data)}字节): {hex_str}")
+
+        # 补齐/截断到20字节，存入pending_write_data
+        write_data = self._parse_tcp_write_data(epc_data)
+        self.pending_write_data = write_data
+
+        data_hex = ' '.join(f'{b:02X}' for b in write_data)
+        self.add_message(f"TCP指令写EPC({len(write_data)}字节): {data_hex}")
+
+        if self.direction == 0:
+            self.add_message("TCP写EPC忽略：当前不在出入库过程中")
+            return
+        if not self.write_done and not self.write_in_progress:
+            self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=True))
 
     def on_cmd_write_user(self, user_data: bytes):
         """处理写USER_DATA指令：补齐20字节，调用_execute_fixed_write执行写标签"""
@@ -2138,7 +2149,7 @@ class RFIDProductionSystem:
             self.add_message("TCP写USER_DATA忽略：当前不在出入库过程中")
             return
         if not self.write_done and not self.write_in_progress:
-            self.root.after(0, self._execute_fixed_write)
+            self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=False))
 
     def on_tcp_message(self, data: bytes, addr):
         """
@@ -2202,16 +2213,16 @@ class RFIDProductionSystem:
                 self.rfid_reader_serial.start_receive_loop()
                 self.rfid_reader_serial.start_firmware()
                 self.rfid_reader_serial.set_write_callback(self.on_rfid_write_result)
-                # user_data = bytes([
-                #     0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                #     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11
-                # ])
+                user_data = bytes([
+                    0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11
+                ])
                 # user_data = bytes([
                 #     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
                 #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
                 # ])
-                # self.rfid_reader_serial.write_tag_with_userdata(user_data)
-                # self.rfid_reader_serial.startloop_tid_user()
+                # self.rfid_reader_serial.write_tag_with_epcdata(user_data)
+                self.rfid_reader_serial.startloop_tid_user()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
 
@@ -2479,37 +2490,43 @@ class RFIDProductionSystem:
             else:
                 self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
 
-    def _execute_fixed_write(self):
-        """同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取（在状态机线程中调用）"""
+    def _execute_fixed_write(self, b_write_epc=False):
+        """
+        同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取。
+        :param b_write_epc: True=写EPC, False=写USER_DATA
+        """
         self.write_in_progress = True
 
         # 优先使用TCP下发的数据，否则使用固定默认数据
-        write_data = self.pending_write_data if self.pending_write_data else self.FIXED_USER_DATA
+        write_data = self.pending_write_data if self.pending_write_data else self.FIXED_DEFAULT_DATA
         self.actual_write_data = write_data  # 记录实际写入的数据，用于后续校验
         data_hex = ' '.join(f'{b:02X}' for b in write_data)
         source = "TCP下发" if self.pending_write_data else "默认"
-        self.add_message(f"开始写入标签内容({source}): {data_hex}")
+        write_type = "EPC" if b_write_epc else "USER_DATA"
+        self.add_message(f"开始写入标签{write_type}({source}): {data_hex}")
 
-        success = self.rfid_reader_serial.write_tag_with_userdata(write_data)
+        # 根据类型调用不同的写方法
+        write_func = self.rfid_reader_serial.write_tag_with_epcdata if b_write_epc else self.rfid_reader_serial.write_tag_with_userdata
+        success = write_func(write_data)
         if success:
             self.write_done = True
             self.write_in_progress = False
-            self.add_message("写标签成功，启动验证读取...")
+            self.add_message(f"写标签{write_type}成功，启动验证读取...")
             self.rfid_reader_serial.startloop_tid_user()
             return True
         else:
-            self.add_message("写标签失败，重试中...")
-            success = self.rfid_reader_serial.write_tag_with_userdata(write_data)
+            self.add_message(f"写标签{write_type}失败，重试中...")
+            success = write_func(write_data)
             if success:
                 self.write_done = True
                 self.write_in_progress = False
-                self.add_message("重试写标签成功，启动验证读取...")
+                self.add_message(f"重试写标签{write_type}成功，启动验证读取...")
                 self.rfid_reader_serial.startloop_tid_user()
                 return True
             else:
                 self.write_done = False
                 self.write_in_progress = False
-                self.add_message("写标签失败（已重试），读取原始标签...")
+                self.add_message(f"写标签{write_type}失败（已重试），读取原始标签...")
                 self.rfid_reader_serial.startloop_tid_user()
                 return False
 
