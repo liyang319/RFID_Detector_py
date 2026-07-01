@@ -134,6 +134,7 @@ class RFIDProductionSystem:
         # 写入状态跟踪
         self.write_done = False
         self.write_in_progress = False
+        self.b_write_epc = False  # 当前写操作类型：True=写EPC, False=写USER_DATA
 
         # RFID标签管理
         self.current_tag = None
@@ -1014,7 +1015,7 @@ class RFIDProductionSystem:
             for i, tag in enumerate(tag_data, 1):
                 verify_mark = "✓" if tag.get('write_verified', False) else "✗"
                 display_lines.append(
-                    f"{i}. [{verify_mark}] 产品: {tag['product_name']}  EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
+                    f"{i}. [{verify_mark}] 产品: {tag['product_name']}  TID: {tag['tid']}  EPC: {tag['epc']}   USER_DATA: {tag['user_data']}")
 
         # 显示条码
         if barcodes:
@@ -1379,13 +1380,17 @@ class RFIDProductionSystem:
         for tag in self.tag_history:
             if not tag.success:
                 continue
-            read_user_data = tag.user_data.replace(' ', '').upper()
-            if self.actual_write_data:
-                written_user_data = self.actual_write_data.hex().upper()
+            # 根据写入类型，校验对应字段
+            if self.b_write_epc:
+                read_data = tag.epc.replace(' ', '').upper()
             else:
-                written_user_data = self.FIXED_DEFAULT_DATA.hex().upper()
-            user_data_match = (read_user_data == written_user_data)
-            write_result_str = "success" if user_data_match else "fail"
+                read_data = tag.user_data.replace(' ', '').upper()
+            if self.actual_write_data:
+                written_data = self.actual_write_data.hex().upper()
+            else:
+                written_data = self.FIXED_DEFAULT_DATA.hex().upper()
+            data_match = (read_data == written_data)
+            write_result_str = "success" if data_match else "fail"
             self._send_tcp_rfid_data_message(
                 tid=tag.tid,
                 epc=tag.epc,
@@ -1407,14 +1412,17 @@ class RFIDProductionSystem:
             write_match_count = 0
             for tag in recent_tags:
                 if tag.success:
-                    # 校验读回的 user_data 是否与写入的内容一致
-                    read_user_data = tag.user_data.replace(' ', '').upper()
-                    if self.actual_write_data:
-                        written_user_data = self.actual_write_data.hex().upper()
+                    # 根据写入类型，校验对应字段
+                    if self.b_write_epc:
+                        read_data = tag.epc.replace(' ', '').upper()
                     else:
-                        written_user_data = self.FIXED_DEFAULT_DATA.hex().upper()
-                    user_data_match = (read_user_data == written_user_data)
-                    if user_data_match:
+                        read_data = tag.user_data.replace(' ', '').upper()
+                    if self.actual_write_data:
+                        written_data = self.actual_write_data.hex().upper()
+                    else:
+                        written_data = self.FIXED_DEFAULT_DATA.hex().upper()
+                    data_match = (read_data == written_data)
+                    if data_match:
                         write_match_count += 1
 
                     tag_data.append({
@@ -1425,7 +1433,7 @@ class RFIDProductionSystem:
                         'timestamp': tag.timestamp,
                         'product_name': tag.product_name,
                         'antenna_num': tag.antenna_num,
-                        'write_verified': user_data_match
+                        'write_verified': data_match
                     })
 
             if tag_data or barcodes:
@@ -2222,7 +2230,7 @@ class RFIDProductionSystem:
                 #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
                 # ])
                 # self.rfid_reader_serial.write_tag_with_epcdata(user_data)
-                self.rfid_reader_serial.startloop_tid_user()
+                # self.rfid_reader_serial.startloop_tid_user()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
 
@@ -2480,10 +2488,12 @@ class RFIDProductionSystem:
             # 添加日志消息
             self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
         else:
-            # 写入完成后读回的标签，EPC相同但USER_DATA已更新，覆盖旧数据
+            # 写入完成后读回的标签，根据写入类型覆盖对应字段
             if self.write_done:
                 for existing_tag in self.tag_history:
                     if existing_tag.epc == tag.epc:
+                        if self.b_write_epc:
+                            existing_tag.epc = tag.epc
                         existing_tag.user_data = tag.user_data
                         self.add_message(f"串口RFID更新已写入标签数据，EPC: {tag.epc}")
                         break
@@ -2496,6 +2506,7 @@ class RFIDProductionSystem:
         :param b_write_epc: True=写EPC, False=写USER_DATA
         """
         self.write_in_progress = True
+        self.b_write_epc = b_write_epc
 
         # 优先使用TCP下发的数据，否则使用固定默认数据
         write_data = self.pending_write_data if self.pending_write_data else self.FIXED_DEFAULT_DATA
