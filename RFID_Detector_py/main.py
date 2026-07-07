@@ -25,6 +25,7 @@ SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
 # SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
 
 REPORT_USE_MQTT = False
+REPORT_TO_SERVER = True
 API_BASE_URL = "http://127.0.0.1:8000"
 
 
@@ -630,7 +631,7 @@ class RFIDProductionSystem:
         # if self.rfid_reader.get_connection_status():
         #     if self.rfid_reader.send_single_cmd('CMD_RFID_LOOP_STOP'):
         #         self.add_message("发送紧急停止指令成功")
-        #         self.report_rfid_tags_via_mqtt()
+        #         self.report_rfid_tags_to_server()
         #     else:
         #         self.add_message("发送紧急停止指令失败")
         # else:
@@ -1426,9 +1427,12 @@ class RFIDProductionSystem:
             self.add_message(f"HTTP上报失败: {e}")
             return False
 
-    def report_rfid_tags_via_mqtt(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
+    def report_rfid_tags_to_server(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
         """通过MQTT或HTTP报告RFID标签（含写入校验结果）"""
-        print(f"report_rfid_tags_via_mqtt type={data_type} REPORT_USE_MQTT={REPORT_USE_MQTT}")
+        if not REPORT_TO_SERVER:
+            self.add_message("REPORT_TO_SERVER=False，跳过上报")
+            return False
+        print(f"report_rfid_tags_to_server type={data_type} REPORT_USE_MQTT={REPORT_USE_MQTT}")
         print(f"当前列表长度: {len(self.tag_history)}")
 
         if barcodes is None:
@@ -1703,7 +1707,7 @@ class RFIDProductionSystem:
                                                         # self._send_tcp_pass_message()
                                                         self.report_rfid_tags_via_tcp()
                                                         self._send_tcp_cargo_out_message()
-                                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND,
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
                                                                                        barcodes=current_barcodes)
                                                         last_report_time = current_time
                                                         print(f"入库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
@@ -1735,7 +1739,7 @@ class RFIDProductionSystem:
                                                     # self._send_tcp_pass_message()
                                                     self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
-                                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_INBOUND,
+                                                    self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
                                                                                    barcodes=current_barcodes)
                                                     last_report_time = current_time
                                                     print(f"入库完成，包含{len(current_barcodes)}个条码")
@@ -1783,7 +1787,7 @@ class RFIDProductionSystem:
                                                         # self._send_tcp_pass_message()
                                                         self.report_rfid_tags_via_tcp()
                                                         self._send_tcp_cargo_out_message()
-                                                        self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND,
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
                                                                                        barcodes=current_barcodes)
                                                         last_report_time = current_time
                                                         print(f"出库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
@@ -1815,7 +1819,7 @@ class RFIDProductionSystem:
                                                     # self._send_tcp_pass_message()
                                                     self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
-                                                    self.report_rfid_tags_via_mqtt(DATA_TYPE_OUTBOUND,
+                                                    self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
                                                                                    barcodes=current_barcodes)
                                                     last_report_time = current_time
                                                     print(f"出库完成，包含{len(current_barcodes)}个条码")
