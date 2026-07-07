@@ -9,6 +9,7 @@ from rfid_tag import RFIDTag
 from command import device_command
 from mqtt_client import MqttClient
 import json
+import urllib.request
 from serial_comm import SerialComm
 from barcode_scanner import BarCodeScanner
 from TcpSocketServer import TcpSocketServer
@@ -22,6 +23,9 @@ SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
 # SERIAL_COM_IO = "/dev/ttyS0"
 # SERIAL_COM_RFID_READER = "/dev/ttysWK3"
 # SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
+
+REPORT_USE_MQTT = False
+API_BASE_URL = "http://127.0.0.1:8000"
 
 
 class RFIDProductionSystem:
@@ -1398,9 +1402,33 @@ class RFIDProductionSystem:
                 write_result=write_result_str
             )
 
+    def _report_rfid_via_http(self, tag):
+        """通过HTTP POST上报单个RFID标签数据"""
+        write_result_str = "success" if tag.get('write_verified', False) else "fail"
+        body = {
+            "type": "report_rfid",
+            "device_id": self.device_id,
+            "tid": self._hex_str_to_bytes(tag['tid']) if tag['tid'] else [],
+            "epc": self._hex_str_to_bytes(tag['epc']) if tag['epc'] else [],
+            "user_data": self._hex_str_to_bytes(tag['user_data']) if tag['user_data'] else [],
+            "write_result": write_result_str
+        }
+        url = f"{API_BASE_URL}/api/report-rfid/"
+        try:
+            data = json.dumps(body, ensure_ascii=False).encode('utf-8')
+            req = urllib.request.Request(url, data=data,
+                                         headers={'Content-Type': 'application/json'},
+                                         method='POST')
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                self.add_message(f"HTTP上报成功: {resp.status} EPC={tag['epc']}")
+                return True
+        except Exception as e:
+            self.add_message(f"HTTP上报失败: {e}")
+            return False
+
     def report_rfid_tags_via_mqtt(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
-        """通过MQTT报告RFID标签（含写入校验结果）"""
-        print(f"report_rfid_tags_via_mqtt type={data_type}")
+        """通过MQTT或HTTP报告RFID标签（含写入校验结果）"""
+        print(f"report_rfid_tags_via_mqtt type={data_type} REPORT_USE_MQTT={REPORT_USE_MQTT}")
         print(f"当前列表长度: {len(self.tag_history)}")
 
         if barcodes is None:
@@ -1472,7 +1500,13 @@ class RFIDProductionSystem:
                     'write_success': self.write_done
                 }
 
-                result = self.send_mqtt_command('report_tags', data_type, report_data)
+                if REPORT_USE_MQTT:
+                    result = self.send_mqtt_command('report_tags', data_type, report_data)
+                else:
+                    # HTTP POST上报每个标签
+                    for td in tag_data:
+                        self._report_rfid_via_http(td)
+                    result = True
                 self.update_ui_with_reported_tags(tag_data, data_type, barcodes, validation)
 
                 self.tag_history.clear()
