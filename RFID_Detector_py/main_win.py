@@ -75,68 +75,55 @@ class MainWindow:
         return tk.Label(parent, text=text, font=("Microsoft YaHei", 10, "bold"),
                         bg='white', fg=fg or self.c['accent'], anchor='w')
 
-    def _grid_row_2col(self, frame, row, label1, attr1, label2, attr2, readonly1=False, readonly2=False):
-        """两列模式行: label1 | entry1 | label2 | entry2"""
-        lbl1 = self._label(frame, label1)
-        lbl1.grid(row=row, column=0, sticky='e', padx=(10, 3), pady=2)
-        e1 = self._entry(frame, readonly=readonly1)
-        e1.grid(row=row, column=1, sticky='ew', padx=(0, 12), pady=2)
-        setattr(self, attr1, e1)
-
-        lbl2 = self._label(frame, label2)
-        lbl2.grid(row=row, column=2, sticky='e', padx=(0, 3), pady=2)
-        e2 = self._entry(frame, readonly=readonly2)
-        e2.grid(row=row, column=3, sticky='ew', padx=(0, 10), pady=2)
-        setattr(self, attr2, e2)
-
-    def _grid_row_1col(self, frame, row, label, attr, readonly=False, span=3):
-        """单列模式行: label | entry (跨多列)"""
-        lbl = self._label(frame, label)
-        lbl.grid(row=row, column=0, sticky='e', padx=(10, 3), pady=2)
-        e = self._entry(frame, readonly=readonly)
-        e.grid(row=row, column=1, columnspan=span, sticky='ew', padx=(0, 10), pady=2)
-        setattr(self, attr, e)
-
     # ===================================================================
     #  生产线信息
     # ===================================================================
+    def _grid_row_1col_full(self, frame, row, label, attr, readonly=False):
+        """单列模式行: label | entry（占满整行）"""
+        lbl = self._label(frame, label)
+        lbl.grid(row=row, column=0, sticky='e', padx=(10, 3), pady=4)
+        e = self._entry(frame, readonly=readonly)
+        e.grid(row=row, column=1, sticky='ew', padx=(0, 10), pady=4)
+        setattr(self, attr, e)
+
     def build_production_group(self, parent):
         frame = self._labelframe(parent, "生产线信息")
         frame.pack(fill='x', pady=(0, 10))
-        # 4列: label | entry | label | entry
-        for i in range(4):
-            frame.columnconfigure(i, weight=1 if i % 2 == 1 else 0)
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
 
-        self._grid_row_2col(frame, 0, "生产企业：", 'manufacturer_edit',
-                             "生产许可证编号：", 'license_number', readonly2=True)
-        self._grid_row_2col(frame, 1, "产品种类：", 'product_type',
-                             "规格型号：", 'type_box')
-        self._grid_row_2col(frame, 2, "净质量：", 'weight_box',
-                             "生产日期：", 'production_date')
-        self._grid_row_2col(frame, 3, "生产批号：", 'batch_number',
-                             "袋/箱号：", 'package_number')
+        fields = [
+            ("生产企业：", 'manufacturer_edit'),
+            ("生产许可证编号：", 'license_number', True),
+            ("产品种类：", 'product_type'),
+            ("规格型号：", 'type_box'),
+            ("净质量：", 'weight_box'),
+            ("生产日期：", 'production_date'),
+            ("生产批号：", 'batch_number'),
+            ("袋/箱号：", 'package_number'),
+            ("信息代码：", 'production_line_code', True),
+        ]
+        for i, f in enumerate(fields):
+            label, attr = f[0], f[1]
+            readonly = f[2] if len(f) > 2 else False
+            self._grid_row_1col_full(frame, i, label, attr, readonly=readonly)
 
-        # 信息代码 — 单列跨3格
-        self._grid_row_1col(frame, 4, "信息代码：", 'production_line_code', readonly=True, span=3)
-
-        # 包装方式 + 生产状态
-        r5 = tk.Frame(frame, bg='white')
-        r5.grid(row=5, column=0, columnspan=4, sticky='ew', padx=10, pady=5)
-
-        pkg_frame = self._labelframe(r5, "包装方式")
-        pkg_frame.pack(side='left', padx=(0, 15))
+        # 包装方式
+        pkg_frame = self._labelframe(frame, "包装方式")
+        pkg_frame.grid(row=len(fields), column=0, columnspan=2, sticky='ew', padx=10, pady=4)
         pkg_inner = tk.Frame(pkg_frame, bg='white')
-        pkg_inner.pack(padx=20, pady=3)
+        pkg_inner.pack(fill='x', padx=10, pady=4)
         self.pkg_var = tk.StringVar(value="bag")
         tk.Radiobutton(pkg_inner, text="箱  装", variable=self.pkg_var, value="box",
                        font=("Microsoft YaHei", 10), bg='white').pack(side='left', padx=10)
         tk.Radiobutton(pkg_inner, text="袋  装", variable=self.pkg_var, value="bag",
                        font=("Microsoft YaHei", 10), bg='white').pack(side='left', padx=10)
 
-        state_frame = self._labelframe(r5, "生产状态")
-        state_frame.pack(side='left')
+        # 生产状态
+        state_frame = self._labelframe(frame, "生产状态")
+        state_frame.grid(row=len(fields) + 1, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
         state_inner = tk.Frame(state_frame, bg='white')
-        state_inner.pack(padx=20, pady=3)
+        state_inner.pack(fill='x', padx=10, pady=4)
         self.state_var = tk.StringVar(value="idle")
         tk.Radiobutton(state_inner, text="产 品 进 入", variable=self.state_var, value="cargo_in",
                        font=("Microsoft YaHei", 10), bg='white', state='disabled').pack(side='left', padx=10)
@@ -163,9 +150,9 @@ class MainWindow:
         ]
         for i, (label, attr) in enumerate(rows):
             lbl = self._label(frame, label)
-            lbl.grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            lbl.grid(row=i, column=0, sticky='e', padx=(10, 3), pady=4)
             e = self._entry(frame, readonly=True)
-            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=4)
             setattr(self, attr, e)
 
         # 数值行
@@ -176,16 +163,16 @@ class MainWindow:
         ]
         for i, (label, val, attr) in enumerate(val_rows):
             r = i + len(rows)
-            self._label(frame, label).grid(row=r, column=0, sticky='e', padx=(10, 3), pady=2)
+            self._label(frame, label).grid(row=r, column=0, sticky='e', padx=(10, 3), pady=4)
             lb = self._label_value(frame, val)
-            lb.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=2)
+            lb.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=4)
             setattr(self, attr, lb)
 
         # 生产总量 — 绿色
         r = len(rows) + len(val_rows)
-        self._label(frame, "生产总量：").grid(row=r, column=0, sticky='e', padx=(10, 3), pady=2)
+        self._label(frame, "生产总量：").grid(row=r, column=0, sticky='e', padx=(10, 3), pady=4)
         self.production_total_label = self._label_value(frame, "0", fg='#27ae60')
-        self.production_total_label.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=2)
+        self.production_total_label.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=4)
 
     # ===================================================================
     #  北斗信息
@@ -202,9 +189,9 @@ class MainWindow:
             ("北斗位置：", 'beidou_location'),
         ]
         for i, (label, attr) in enumerate(rows):
-            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=4)
             e = self._entry(frame, readonly=True)
-            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=4)
             setattr(self, attr, e)
 
     # ===================================================================
@@ -222,9 +209,9 @@ class MainWindow:
             ("频点：", 'frequency_edit'),
         ]
         for i, (label, attr) in enumerate(rows):
-            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=4)
             e = self._entry(frame)
-            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=4)
             setattr(self, attr, e)
 
         # 控制按钮
