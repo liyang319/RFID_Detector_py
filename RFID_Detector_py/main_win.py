@@ -6,6 +6,10 @@ import time
 from datetime import datetime
 
 
+ENTRY_WIDTH = 18  # 编辑框统一宽度
+LABEL_WIDTH = 12  # 标签统一宽度(字符)
+
+
 class MainWindow:
     """主窗口 — 生产线信息 / 集成设备信息 / 北斗信息 / RFID控制 / 调试信息"""
 
@@ -21,13 +25,8 @@ class MainWindow:
         self.root.geometry("1000x800")
         self.root.configure(bg='white')
 
-        # 配色（参考 PyQt 原版风格）
-        self.c = {
-            'bg': 'white',
-            'fg': '#2c3e50',
-            'accent': '#4CAF50',
-            'entry_border': '#cccccc',
-        }
+        # 配色
+        self.c = {'bg': 'white', 'fg': '#2c3e50', 'accent': '#4CAF50'}
 
         # 顶栏 — 标题
         title_frame = tk.Frame(self.root, bg='white')
@@ -39,8 +38,6 @@ class MainWindow:
         # 主体 — 双列
         main = tk.Frame(self.root, bg='white')
         main.pack(fill='both', expand=True, padx=15, pady=5)
-
-        # 列权重: 左2 右1
         main.columnconfigure(0, weight=2)
         main.columnconfigure(1, weight=1)
         main.rowconfigure(0, weight=1)
@@ -52,10 +49,53 @@ class MainWindow:
 
         self.build_production_group(left_col)
         self.build_device_info_group(left_col)
-
         self.build_beidou_group(right_col)
         self.build_rfid_group(right_col)
         self.build_debug_group(right_col)
+
+    # ===================================================================
+    #  工具方法
+    # ===================================================================
+    def _labelframe(self, parent, text):
+        return tk.LabelFrame(parent, text=f" {text} ", font=("Microsoft YaHei", 11, "bold"),
+                             bg='white', fg='#2c3e50', relief='ridge', bd=2, labelanchor='n')
+
+    def _entry(self, parent, readonly=False, **kw):
+        e = tk.Entry(parent, font=("Microsoft YaHei", 10), relief='solid', bd=1,
+                     bg='white', highlightthickness=0, width=ENTRY_WIDTH, **kw)
+        if readonly:
+            e.configure(state='readonly', readonlybackground='#f0f0f0')
+        return e
+
+    def _label(self, parent, text):
+        return tk.Label(parent, text=text, font=("Microsoft YaHei", 10),
+                        bg='white', fg=self.c['fg'], anchor='e', width=LABEL_WIDTH)
+
+    def _label_value(self, parent, text, fg=None):
+        return tk.Label(parent, text=text, font=("Microsoft YaHei", 10, "bold"),
+                        bg='white', fg=fg or self.c['accent'], anchor='w')
+
+    def _grid_row_2col(self, frame, row, label1, attr1, label2, attr2, readonly1=False, readonly2=False):
+        """两列模式行: label1 | entry1 | label2 | entry2"""
+        lbl1 = self._label(frame, label1)
+        lbl1.grid(row=row, column=0, sticky='e', padx=(10, 3), pady=2)
+        e1 = self._entry(frame, readonly=readonly1)
+        e1.grid(row=row, column=1, sticky='ew', padx=(0, 12), pady=2)
+        setattr(self, attr1, e1)
+
+        lbl2 = self._label(frame, label2)
+        lbl2.grid(row=row, column=2, sticky='e', padx=(0, 3), pady=2)
+        e2 = self._entry(frame, readonly=readonly2)
+        e2.grid(row=row, column=3, sticky='ew', padx=(0, 10), pady=2)
+        setattr(self, attr2, e2)
+
+    def _grid_row_1col(self, frame, row, label, attr, readonly=False, span=3):
+        """单列模式行: label | entry (跨多列)"""
+        lbl = self._label(frame, label)
+        lbl.grid(row=row, column=0, sticky='e', padx=(10, 3), pady=2)
+        e = self._entry(frame, readonly=readonly)
+        e.grid(row=row, column=1, columnspan=span, sticky='ew', padx=(0, 10), pady=2)
+        setattr(self, attr, e)
 
     # ===================================================================
     #  生产线信息
@@ -63,65 +103,25 @@ class MainWindow:
     def build_production_group(self, parent):
         frame = self._labelframe(parent, "生产线信息")
         frame.pack(fill='x', pady=(0, 10))
+        # 4列: label | entry | label | entry
+        for i in range(4):
+            frame.columnconfigure(i, weight=1 if i % 2 == 1 else 0)
 
-        fs = {'font': ("Microsoft YaHei", 10), 'bg': 'white', 'fg': self.c['fg']}
-        entry_opts = {'font': ("Microsoft YaHei", 10), 'relief': 'solid', 'bd': 1,
-                      'bg': 'white', 'highlightthickness': 0}
+        self._grid_row_2col(frame, 0, "生产企业：", 'manufacturer_edit',
+                             "生产许可证编号：", 'license_number', readonly2=True)
+        self._grid_row_2col(frame, 1, "产品种类：", 'product_type',
+                             "规格型号：", 'type_box')
+        self._grid_row_2col(frame, 2, "净质量：", 'weight_box',
+                             "生产日期：", 'production_date')
+        self._grid_row_2col(frame, 3, "生产批号：", 'batch_number',
+                             "袋/箱号：", 'package_number')
 
-        # 行0 — 生产企业 & 许可证号
-        r0 = tk.Frame(frame, bg='white')
-        r0.pack(fill='x', padx=10, pady=3)
-        tk.Label(r0, text="生产企业：", **fs).pack(side='left')
-        self.manufacturer_combo = ttk.Combobox(r0, font=("Microsoft YaHei", 10), width=18)
-        self.manufacturer_combo.pack(side='left', padx=(0, 20))
-        tk.Label(r0, text="生产许可证编号：", **fs).pack(side='left')
-        self.license_number = tk.Entry(r0, width=22, **entry_opts)
-        self.license_number.configure(state='readonly', readonlybackground='#f0f0f0')
-        self.license_number.pack(side='left')
+        # 信息代码 — 单列跨3格
+        self._grid_row_1col(frame, 4, "信息代码：", 'production_line_code', readonly=True, span=3)
 
-        # 行1 — 产品种类 & 规格型号
-        r1 = tk.Frame(frame, bg='white')
-        r1.pack(fill='x', padx=10, pady=3)
-        tk.Label(r1, text="产品种类：", **fs).pack(side='left')
-        self.product_type = ttk.Combobox(r1, font=("Microsoft YaHei", 10), width=18)
-        self.product_type.bind('<<ComboboxSelected>>', self._on_product_type_changed)
-        self.product_type.pack(side='left', padx=(0, 20))
-        tk.Label(r1, text="规格型号：", **fs).pack(side='left')
-        self.type_box = ttk.Combobox(r1, font=("Microsoft YaHei", 10), width=20)
-        self.type_box.pack(side='left')
-
-        # 行2 — 净质量 & 生产日期
-        r2 = tk.Frame(frame, bg='white')
-        r2.pack(fill='x', padx=10, pady=3)
-        tk.Label(r2, text="净质量：", **fs).pack(side='left')
-        self.weight_box = ttk.Combobox(r2, font=("Microsoft YaHei", 10), width=18)
-        self.weight_box.pack(side='left', padx=(0, 20))
-        tk.Label(r2, text="生产日期：", **fs).pack(side='left')
-        self.production_date = tk.Entry(r2, width=22, **entry_opts)
-        self.production_date.insert(0, datetime.now().strftime("%Y%m%d"))
-        self.production_date.pack(side='left')
-
-        # 行3 — 批号 & 袋/箱号
-        r3 = tk.Frame(frame, bg='white')
-        r3.pack(fill='x', padx=10, pady=3)
-        tk.Label(r3, text="生产批号：", **fs).pack(side='left')
-        self.batch_number = tk.Entry(r3, width=18, **entry_opts)
-        self.batch_number.pack(side='left', padx=(0, 20))
-        tk.Label(r3, text="袋/箱号：", **fs).pack(side='left')
-        self.package_number = tk.Entry(r3, width=20, **entry_opts)
-        self.package_number.pack(side='left')
-
-        # 行4 — 生产线信息代码
-        r4 = tk.Frame(frame, bg='white')
-        r4.pack(fill='x', padx=10, pady=3)
-        tk.Label(r4, text="信息代码：", **fs).pack(side='left')
-        self.production_line_code = tk.Entry(r4, **entry_opts)
-        self.production_line_code.configure(state='readonly', readonlybackground='#f0f0f0')
-        self.production_line_code.pack(side='left', fill='x', expand=True)
-
-        # 行5 — 包装方式 + 生产状态
+        # 包装方式 + 生产状态
         r5 = tk.Frame(frame, bg='white')
-        r5.pack(fill='x', padx=10, pady=5)
+        r5.grid(row=5, column=0, columnspan=4, sticky='ew', padx=10, pady=5)
 
         pkg_frame = self._labelframe(r5, "包装方式")
         pkg_frame.pack(side='left', padx=(0, 15))
@@ -143,56 +143,49 @@ class MainWindow:
         tk.Radiobutton(state_inner, text="产 品 通 过", variable=self.state_var, value="cargo_out",
                        font=("Microsoft YaHei", 10), bg='white', state='disabled').pack(side='left', padx=10)
 
+        # 初始化生产日期
+        self.production_date.insert(0, datetime.now().strftime("%Y%m%d"))
+
     # ===================================================================
     #  集成设备信息
     # ===================================================================
     def build_device_info_group(self, parent):
         frame = self._labelframe(parent, "集成设备信息")
         frame.pack(fill='x', pady=(0, 10))
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
 
-        fs = {'font': ("Microsoft YaHei", 10), 'bg': 'white', 'fg': self.c['fg']}
-        entry_opts = {'font': ("Microsoft YaHei", 10), 'relief': 'solid', 'bd': 1,
-                      'bg': 'white', 'highlightthickness': 0,
-                      'readonlybackground': '#f0f0f0'}
-        val_opts = {'font': ("Microsoft YaHei", 10, "bold"), 'bg': 'white', 'fg': self.c['accent']}
+        rows = [
+            ("条形码：", 'barcode_edit'),
+            ("待写入代码：", 'pending_code_edit'),
+            ("TID：", 'tid_edit'),
+            ("EPC：", 'epc_edit'),
+        ]
+        for i, (label, attr) in enumerate(rows):
+            lbl = self._label(frame, label)
+            lbl.grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            e = self._entry(frame, readonly=True)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            setattr(self, attr, e)
 
-        # 条形码
-        self._info_row(frame, "条形码：", entry_opts, 'barcode_edit', readonly=True)
-        # 待写入代码
-        self._info_row(frame, "待写入代码：", entry_opts, 'pending_code_edit', readonly=True)
-        # TID
-        self._info_row(frame, "TID：", entry_opts, 'tid_edit', readonly=True)
-        # EPC
-        self._info_row(frame, "EPC：", entry_opts, 'epc_edit', readonly=True)
-        # 产线运行时间
-        self._label_row(frame, "产线运行时间：", "00时00分", 'runtime_label')
-        # 当前识别数量
-        self._label_row(frame, "当前识别数量：", "0", 'current_load_label')
-        # 识别总量
-        self._label_row(frame, "识别总量：", "0", 'total_label')
-        # 生产总量
-        self._label_row(frame, "生产总量：", "0", 'production_total_label', fg='#27ae60')
+        # 数值行
+        val_rows = [
+            ("产线运行时间：", "00时00分", 'runtime_label'),
+            ("当前识别数量：", "0", 'current_load_label'),
+            ("识别总量：", "0", 'total_label'),
+        ]
+        for i, (label, val, attr) in enumerate(val_rows):
+            r = i + len(rows)
+            self._label(frame, label).grid(row=r, column=0, sticky='e', padx=(10, 3), pady=2)
+            lb = self._label_value(frame, val)
+            lb.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=2)
+            setattr(self, attr, lb)
 
-    def _info_row(self, parent, label_text, entry_opts, attr, readonly=False):
-        r = tk.Frame(parent, bg='white')
-        r.pack(fill='x', padx=10, pady=2)
-        tk.Label(r, text=label_text, font=("Microsoft YaHei", 10),
-                 bg='white', fg=self.c['fg']).pack(side='left')
-        e = tk.Entry(r, **entry_opts)
-        if readonly:
-            e.configure(state='readonly')
-        e.pack(side='left', fill='x', expand=True, padx=(5, 0))
-        setattr(self, attr, e)
-
-    def _label_row(self, parent, label_text, value, attr, fg=None):
-        r = tk.Frame(parent, bg='white')
-        r.pack(fill='x', padx=10, pady=2)
-        tk.Label(r, text=label_text, font=("Microsoft YaHei", 10),
-                 bg='white', fg=self.c['fg']).pack(side='left')
-        lbl = tk.Label(r, text=value, font=("Microsoft YaHei", 10, "bold"),
-                       bg='white', fg=fg or self.c['accent'])
-        lbl.pack(side='left', padx=(5, 0))
-        setattr(self, attr, lbl)
+        # 生产总量 — 绿色
+        r = len(rows) + len(val_rows)
+        self._label(frame, "生产总量：").grid(row=r, column=0, sticky='e', padx=(10, 3), pady=2)
+        self.production_total_label = self._label_value(frame, "0", fg='#27ae60')
+        self.production_total_label.grid(row=r, column=1, sticky='w', padx=(0, 10), pady=2)
 
     # ===================================================================
     #  北斗信息
@@ -200,13 +193,19 @@ class MainWindow:
     def build_beidou_group(self, parent):
         frame = self._labelframe(parent, "北斗信息")
         frame.pack(fill='x', pady=(0, 10))
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
 
-        entry_opts = {'font': ("Microsoft YaHei", 10), 'relief': 'solid', 'bd': 1,
-                      'bg': 'white', 'highlightthickness': 0, 'readonlybackground': '#f0f0f0'}
-
-        self._info_row(frame, "北斗ID：", entry_opts, 'beidou_id', readonly=True)
-        self._info_row(frame, "当前北斗时间：", entry_opts, 'beidou_time', readonly=True)
-        self._info_row(frame, "北斗位置：", entry_opts, 'beidou_location', readonly=True)
+        rows = [
+            ("北斗ID：", 'beidou_id'),
+            ("当前北斗时间：", 'beidou_time'),
+            ("北斗位置：", 'beidou_location'),
+        ]
+        for i, (label, attr) in enumerate(rows):
+            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            e = self._entry(frame, readonly=True)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            setattr(self, attr, e)
 
     # ===================================================================
     #  RFID控制
@@ -214,20 +213,23 @@ class MainWindow:
     def build_rfid_group(self, parent):
         frame = self._labelframe(parent, "RFID控制")
         frame.pack(fill='x', pady=(0, 10))
+        frame.columnconfigure(0, weight=0)
+        frame.columnconfigure(1, weight=1)
 
-        entry_opts = {'font': ("Microsoft YaHei", 10), 'relief': 'solid', 'bd': 1,
-                      'bg': 'white', 'highlightthickness': 0}
-
-        # 天线号
-        self._info_row(frame, "天线号：", entry_opts, 'antenna_edit')
-        # 功率
-        self._info_row(frame, "功率(dBm)：", entry_opts, 'power_edit')
-        # 频点
-        self._info_row(frame, "频点：", entry_opts, 'frequency_edit')
+        rows = [
+            ("天线号：", 'antenna_edit'),
+            ("功率(dBm)：", 'power_edit'),
+            ("频点：", 'frequency_edit'),
+        ]
+        for i, (label, attr) in enumerate(rows):
+            self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=2)
+            e = self._entry(frame)
+            e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=2)
+            setattr(self, attr, e)
 
         # 控制按钮
         btn_frame = tk.Frame(frame, bg='white')
-        btn_frame.pack(fill='x', padx=10, pady=8)
+        btn_frame.grid(row=len(rows), column=0, columnspan=2, sticky='ew', padx=10, pady=8)
 
         btn_green = {'font': ("Microsoft YaHei", 9, "bold"), 'bg': '#4CAF50', 'fg': 'white',
                      'activebackground': '#45a049', 'activeforeground': 'white',
@@ -253,28 +255,10 @@ class MainWindow:
                                   bg='white', wrap='word', highlightthickness=0)
         self.debug_text.pack(fill='both', expand=True, padx=5, pady=5)
         self.debug_text.configure(state='disabled')
-
-        # 颜色tag
         self.debug_text.tag_config("error", foreground="#f44336")
         self.debug_text.tag_config("warning", foreground="#ff9800")
         self.debug_text.tag_config("info", foreground="#4CAF50")
         self.debug_text.tag_config("debug", foreground="#2196F3")
-
-    # ===================================================================
-    #  工具
-    # ===================================================================
-    def _labelframe(self, parent, text):
-        """模拟 PyQt QGroupBox 风格的 LabelFrame"""
-        f = tk.LabelFrame(parent, text=f" {text} ", font=("Microsoft YaHei", 11, "bold"),
-                          bg='white', fg='#2c3e50', relief='ridge', bd=2,
-                          labelanchor='n')
-        return f
-
-    # ===================================================================
-    #  回调
-    # ===================================================================
-    def _on_product_type_changed(self, event=None):
-        pass  # 子类可重写
 
     # ===================================================================
     #  UI更新方法
@@ -287,12 +271,6 @@ class MainWindow:
             e.insert(0, str(text))
             e.configure(state='readonly')
 
-    def _set_editable_entry(self, attr, text):
-        e = getattr(self, attr, None)
-        if e:
-            e.delete(0, 'end')
-            e.insert(0, str(text))
-
     def log(self, message: str, level: str = "info"):
         timestamp = time.strftime("%H:%M:%S")
         self.debug_text.configure(state='normal')
@@ -300,129 +278,70 @@ class MainWindow:
         self.debug_text.insert('end', f"{message}\n", (level,))
         self.debug_text.see('end')
         self.debug_text.configure(state='disabled')
-        # 限制行数
         lines = int(self.debug_text.index('end-1c').split('.')[0])
         if lines > 500:
             self.debug_text.delete('1.0', '100.0')
 
-    def update_barcode(self, text: str):
-        self._set_entry('barcode_edit', text)
+    def update_barcode(self, text): self._set_entry('barcode_edit', text)
+    def update_tid(self, text): self._set_entry('tid_edit', text)
+    def update_epc(self, text): self._set_entry('epc_edit', text)
+    def update_pending_code(self, text): self._set_entry('pending_code_edit', text)
+    def update_license(self, text): self._set_entry('license_number', text)
+    def update_production_code(self, text): self._set_entry('production_line_code', text)
+    def update_beidou_time(self, text): self._set_entry('beidou_time', text)
+    def update_beidou_location(self, text): self._set_entry('beidou_location', text)
 
-    def update_tid(self, text: str):
-        self._set_entry('tid_edit', text)
+    def update_runtime(self, text): self.runtime_label.configure(text=text)
+    def update_current_load(self, count): self.current_load_label.configure(text=str(count))
+    def update_total_identified(self, count): self.total_label.configure(text=str(count))
+    def update_production_total(self, count): self.production_total_label.configure(text=str(count))
 
-    def update_epc(self, text: str):
-        self._set_entry('epc_edit', text)
+    def set_cargo_in(self): self.state_var.set("cargo_in")
+    def set_cargo_out(self): self.state_var.set("cargo_out")
 
-    def update_pending_code(self, text: str):
-        self._set_entry('pending_code_edit', text)
+    def _set_editable_entry(self, attr, text):
+        e = getattr(self, attr, None)
+        if e: e.delete(0, 'end'); e.insert(0, str(text))
 
-    def update_license(self, text: str):
-        self._set_entry('license_number', text)
+    def set_product_types(self, names): pass  # tkinter Entry, not Combo
+    def set_manufacturers(self, names): pass
+    def set_type_box_items(self, items): pass
+    def set_weight_items(self, items): pass
 
-    def update_production_code(self, text: str):
-        self._set_entry('production_line_code', text)
+    def get_manufacturer_name(self): return self.manufacturer_edit.get()
+    def get_product_name(self): return self.product_type.get()
+    def get_production_date(self): return self.production_date.get()
+    def get_batch_number(self): return self.batch_number.get()
+    def get_package_number(self): return self.package_number.get()
+    def is_box_package(self): return self.pkg_var.get() == "box"
+    def get_type_box(self): return self.type_box.get()
+    def get_weight(self): return self.weight_box.get()
 
-    def update_beidou_time(self, text: str):
-        self._set_entry('beidou_time', text)
+    def get_rfid_params(self):
+        return {'antenna': self.antenna_edit.get(),
+                'power': self.power_edit.get(),
+                'frequency': self.frequency_edit.get()}
 
-    def update_beidou_location(self, text: str):
-        self._set_entry('beidou_location', text)
+    def set_rfid_params(self, antenna, power, frequency):
+        self._set_editable_entry('antenna_edit', antenna)
+        self._set_editable_entry('power_edit', power)
+        self._set_editable_entry('frequency_edit', frequency)
 
-    def update_runtime(self, text: str):
-        self.runtime_label.configure(text=text)
-
-    def update_current_load(self, count: int):
-        self.current_load_label.configure(text=str(count))
-
-    def update_total_identified(self, count: int):
-        self.total_label.configure(text=str(count))
-
-    def update_production_total(self, count: int):
-        self.production_total_label.configure(text=str(count))
-
-    def set_cargo_in(self):
-        self.state_var.set("cargo_in")
-
-    def set_cargo_out(self):
-        self.state_var.set("cargo_out")
-
-    def set_product_types(self, names: list):
-        self.product_type['values'] = list(names)
-        if names:
-            self.product_type.current(0)
-
-    def set_manufacturers(self, names: list):
-        self.manufacturer_combo['values'] = list(names)
-        if names:
-            self.manufacturer_combo.current(0)
-
-    def set_type_box_items(self, items: list):
-        self.type_box['values'] = list(items)
-        if items:
-            self.type_box.current(0)
-
-    def set_weight_items(self, items: list):
-        self.weight_box['values'] = list(items)
-        if items:
-            self.weight_box.current(0)
-
-    # --- getters ---
-    def get_manufacturer_name(self) -> str:
-        return self.manufacturer_combo.get()
-
-    def get_product_name(self) -> str:
-        return self.product_type.get()
-
-    def get_production_date(self) -> str:
-        return self.production_date.get()
-
-    def get_batch_number(self) -> str:
-        return self.batch_number.get()
-
-    def get_package_number(self) -> str:
-        return self.package_number.get()
-
-    def is_box_package(self) -> bool:
-        return self.pkg_var.get() == "box"
-
-    def get_type_box(self) -> str:
-        return self.type_box.get()
-
-    def get_weight(self) -> str:
-        return self.weight_box.get()
-
-    def get_rfid_params(self) -> dict:
-        return {
-            'antenna': self.antenna_edit.get(),
-            'power': self.power_edit.get(),
-            'frequency': self.frequency_edit.get()
-        }
-
-    def set_rfid_params(self, antenna: str, power: str, frequency: str):
-        self.antenna_edit.delete(0, 'end')
-        self.antenna_edit.insert(0, antenna)
-        self.power_edit.delete(0, 'end')
-        self.power_edit.insert(0, power)
-        self.frequency_edit.delete(0, 'end')
-        self.frequency_edit.insert(0, frequency)
-
-    # --- 事件循环 ---
     def show(self):
         if self._owns_root:
             self.root.mainloop()
-
-    def run(self):
-        self.show()
+    def run(self): self.show()
 
 
 # ===================== 测试入口 =====================
 if __name__ == "__main__":
     win = MainWindow()
-    win.set_product_types(["乳化炸药", "铵油炸药"])
-    win.set_manufacturers(["XX化工有限公司", "YY民爆公司"])
-    win.set_type_box_items(["Φ32mm×200g", "Φ70mm×3kg"])
-    win.set_weight_items(["200g", "500g", "3kg"])
+    win._set_editable_entry('manufacturer_edit', "XX化工有限公司")
+    win._set_editable_entry('product_type', "乳化炸药")
+    win._set_editable_entry('type_box', "Φ32mm×200g")
+    win._set_editable_entry('weight_box', "200g")
+    win._set_editable_entry('batch_number', "B001")
+    win._set_editable_entry('package_number', "0001")
     win.log("系统启动完成", "info")
     win.log("RFID读写器连接成功", "info")
     win.log("标签写入失败，重试中...", "warning")
