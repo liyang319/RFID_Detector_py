@@ -254,6 +254,7 @@ class MainWindow:
         self.debug_text.configure(state='disabled')
         for t in ["ERROR", "WARN", "INFO", "DEBUG"]:
             self.debug_text.tag_config(t, foreground={"ERROR": "#f44336", "WARN": "#ff9800", "INFO": "#4CAF50", "DEBUG": "#2196F3"}[t])
+        self.debug_text.tag_config("msg", foreground="#000000")
 
     # ===================================================================
     #  UI 辅助
@@ -271,8 +272,8 @@ class MainWindow:
     def log(self, message: str, level: str = "INFO"):
         ts = time.strftime("%H:%M:%S")
         self.debug_text.configure(state='normal')
-        self.debug_text.insert('end', f"[{ts}] [{level}] ", ())
-        self.debug_text.insert('end', f"{message}\n", (level,))
+        self.debug_text.insert('end', f"[{ts}] [{level}] ", (level,))
+        self.debug_text.insert('end', f"{message}\n", ("msg",))
         self.debug_text.see('end'); self.debug_text.configure(state='disabled')
         if int(self.debug_text.index('end-1c').split('.')[0]) > 500:
             self.debug_text.delete('1.0', '100.0')
@@ -305,7 +306,7 @@ class MainWindow:
             try:
                 self.tcp_server.start()
             except Exception as e:
-                self.add_message(f"启动 TCP Server 失败: {e}")
+                self.log(f"启动 TCP Server 失败: {e}", "ERROR")
         threading.Thread(target=run_server, daemon=True).start()
 
     def auto_connect(self):
@@ -344,7 +345,7 @@ class MainWindow:
                 self.mqtt_client.subscribe(self.mqtt_client.response_topic)
                 self.add_message("MQTT客户端启动成功")
             except Exception as e:
-                self.add_message(f"MQTT客户端启动失败: {e}")
+                self.log(f"MQTT客户端启动失败: {e}", "ERROR")
         threading.Thread(target=connect_thread, daemon=True).start()
 
     def start_serial_communication(self):
@@ -353,7 +354,7 @@ class MainWindow:
             if self.setup_serial_communication():
                 self.add_message("串口通信启动成功")
             else:
-                self.add_message("串口通信启动失败，请检查串口连接")
+                self.log("串口通信启动失败，请检查串口连接", "ERROR")
         self.root.after(0, connect_serial)
 
     def setup_serial_communication(self):
@@ -368,10 +369,10 @@ class MainWindow:
                 self.start_serial_reading_loop()
                 return True
             else:
-                self.add_message("串口连接失败")
+                self.log("串口连接失败", "ERROR")
                 return False
         except Exception as e:
-            self.add_message(f"串口连接异常: {e}")
+            self.log(f"串口连接异常: {e}", "ERROR")
             return False
 
     def start_barcode_scanner_communication(self):
@@ -388,11 +389,11 @@ class MainWindow:
                 if self.bar_scanner.start_receive_loop():
                     self.add_message("条码扫描器接收线程已启动")
                 else:
-                    self.add_message("条码扫描器接收线程启动失败")
+                    self.log("条码扫描器接收线程启动失败", "ERROR")
             else:
-                self.add_message("条码扫描器串口连接失败")
+                self.log("条码扫描器串口连接失败", "ERROR")
         except Exception as e:
-            self.add_message(f"启动条码扫描器失败: {e}")
+            self.log(f"启动条码扫描器失败: {e}", "ERROR")
 
     def start_rfid_reader_serial(self):
         """启动串口 RFID 读写器"""
@@ -410,7 +411,7 @@ class MainWindow:
                 # self.rfid_reader_serial.write_tag_with_epcdata(user_data)
                 # self.rfid_reader_serial.startloop_tid_user()
             else:
-                self.add_message("串口 RFID 读写器连接失败")
+                self.log("串口 RFID 读写器连接失败", "ERROR")
         threading.Thread(target=connect, daemon=True).start()
 
     # ===================================================================
@@ -776,7 +777,7 @@ class MainWindow:
                         time.sleep(sleep_time)
 
                 except Exception as e:
-                    self.add_message(f"串口读取错误: {e}")
+                    self.log(f"串口读取错误: {e}", "ERROR")
                     time.sleep(0.5)
 
         threading.Thread(target=read_loop, daemon=True).start()
@@ -831,7 +832,7 @@ class MainWindow:
                 hex_data = ' '.join([f'{b:02X}' for b in data])
                 self.parse_serial_data(data)
             except Exception as e:
-                self.add_message(f"处理串口数据错误: {e}")
+                self.log(f"处理串口数据错误: {e}", "ERROR")
         self.root.after(0, update_ui)
 
     def parse_serial_data(self, data):
@@ -850,7 +851,7 @@ class MainWindow:
                         self.add_message(f"未知串口命令响应: 0x{cmd:02X}")
 
         except Exception as e:
-            self.add_message(f"解析串口数据错误: {e}")
+            self.log(f"解析串口数据错误: {e}", "ERROR")
 
     def handle_register_response(self, data):
         """处理寄存器响应数据"""
@@ -859,7 +860,7 @@ class MainWindow:
                 register_value = (data[3] << 8) | data[4]
                 self.add_message(f"寄存器值: {register_value}")
         except Exception as e:
-            self.add_message(f"处理寄存器响应错误: {e}")
+            self.log(f"处理寄存器响应错误: {e}", "ERROR")
 
     def on_rfid_serial_data(self, data: bytes):
         self.serial_rfid_buffer.extend(data)
@@ -904,7 +905,7 @@ class MainWindow:
     def _add_serial_tag_to_history(self, tag: RFIDTag):
         """将串口 RFID 标签添加到历史记录（基于 EPC 去重，更新 UI）"""
         if not tag.success:
-            self.add_message(f"标签无效: {tag.error_message}")
+            self.log(f"标签无效: {tag.error_message}", "WARN")
             return
 
         # 检查 EPC 是否已存在于历史记录中
@@ -984,7 +985,7 @@ class MainWindow:
             self.rfid_reader_serial.startloop_tid_user()
             return True
         else:
-            self.add_message(f"写标签{write_type}失败，重试中...")
+            self.log(f"写标签{write_type}失败，重试中...", "WARN")
             success = write_func(write_data)
             if success:
                 self.write_done = True
@@ -995,7 +996,7 @@ class MainWindow:
             else:
                 self.write_done = False
                 self.write_in_progress = False
-                self.add_message(f"写标签{write_type}失败（已重试），读取原始标签...")
+                self.log(f"写标签{write_type}失败（已重试），读取原始标签...", "ERROR")
                 self.rfid_reader_serial.startloop_tid_user()
                 return False
 
@@ -1088,7 +1089,7 @@ class MainWindow:
     def send_mqtt_command(self, command, data_type, data=None):
         """发送MQTT命令"""
         if not hasattr(self, 'mqtt_client') or not self.mqtt_client.connected:
-            self.add_message("MQTT客户端未连接，无法发送命令")
+            self.log("MQTT客户端未连接，无法发送命令", "WARN")
             return False
         try:
             command_data = {
@@ -1104,7 +1105,7 @@ class MainWindow:
             self.add_message(f"发送MQTT命令: {command}")
             return True
         except Exception as e:
-            self.add_message(f"发送MQTT命令失败: {e}")
+            self.log(f"发送MQTT命令失败: {e}", "ERROR")
             return False
 
     def _send_tcp_pass_message(self):
