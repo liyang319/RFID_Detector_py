@@ -410,112 +410,387 @@ class MainWindow:
     #  状态机
     # ===================================================================
     def start_serial_reading_loop(self):
-        print('start_serial_reading_loop')
-        S_IDLE, S_IN_START, S_IN_MID, S_IN_END = 0, 1, 2, 3
-        S_OUT_START, S_OUT_MID, S_OUT_END = 4, 5, 6
-        current_state = S_IDLE
-        process_start_time = None
-        last_state_change_time = 0
-        last_report_time = 0
-        report_cooldown = 3.0
-        idle_timeout = 60.0
-        confirmed_status = 0
-        target_status = 0
-        current_detect_count = 0
-        in_confirmation = False
-        DETECT_INTERVAL = 0.05
-        last_confirm_check_time = 0
+        """启动串口读取循环（带状态确认机制，支持不同确认标准）"""
 
-        def _run():
-            nonlocal current_state, process_start_time, last_state_change_time, last_report_time
-            nonlocal confirmed_status, target_status, current_detect_count, in_confirmation, last_confirm_check_time
+        def read_loop():
+            # 状态机定义
+            STATE_IDLE = 0
+            STATE_INBOUND_START = 1
+            STATE_INBOUND_MIDDLE = 2
+            STATE_INBOUND_END = 3
+            STATE_OUTBOUND_START = 4
+            STATE_OUTBOUND_MIDDLE = 5
+            STATE_OUTBOUND_END = 6
+
+            # 状态变量
+            current_state = STATE_IDLE
+            previous_status = 0
+            read_interval = 0.05
+
+            # 防重复报告机制
+            last_report_time = 0
+            report_cooldown = 1.0
+
+            # 超时检测机制
+            last_state_change_time = time.time()
+            idle_timeout = 10.0
+            process_start_time = None
+
+            # 状态确认机制 - 使用不同的标准
+            DETECT_ON_COUNT = 1  # 遮挡状态需要连续检测的次数
+            DETECT_OFF_COUNT = 2  # 不遮挡状态需要连续检测的次数
+            DETECT_INTERVAL = 0.05  # 状态确认检测间隔（秒）
+
+            current_detect_count = 0
+            confirmed_status = 0
+            target_status = 0
+            in_confirmation = False
+            last_raw_status = 0
+            last_confirm_check_time = 0  # 上次状态确认检查时间
+
+            def get_required_count(status):
+                """根据目标状态获取需要的确认次数"""
+                if status == 0x00:  # 无遮挡
+                    return DETECT_OFF_COUNT
+                else:  # 遮挡状态 (0x01, 0x02, 0x03)
+                    return DETECT_ON_COUNT
+
             while self.serial_comm.is_open():
                 try:
                     start_time = time.time()
                     data, length = self.serial_comm.read_register(0x02, timeout=0.5)
+
                     if length > 0 and len(data) >= 4:
                         raw_status = data[3]
-                        ct = time.time()
-                        if raw_status != target_status:
-                            target_status = raw_status; current_detect_count = 1
-                            in_confirmation = True; last_confirm_check_time = ct
-                        elif in_confirmation and ct - last_confirm_check_time >= DETECT_INTERVAL:
-                            current_detect_count += 1; last_confirm_check_time = ct
-                            req = 1 if target_status == 0x00 else 2 if target_status in (0x01, 0x02) else 2
-                            if current_detect_count >= req:
-                                confirmed_status = target_status; in_confirmation = False
-                                current_detect_count = 0; self.current_status = confirmed_status
-                                last_state_change_time = ct
+                        last_raw_status = raw_status
 
-                                if current_state == S_IDLE:
-                                    if confirmed_status == 0x01:
-                                        current_state = S_IN_START; self.direction = 1
-                                        self.start_rfid_loop_query(True); process_start_time = ct
-                                        self.clear_barcode_cache()
-                                        self._send_tcp_cargo_in_message()
-                                    elif confirmed_status == 0x02:
-                                        current_state = S_OUT_START; self.direction = 2
-                                        self.start_rfid_loop_query(True); process_start_time = ct
-                                        self.clear_barcode_cache()
-                                        self._send_tcp_cargo_in_message()
+                        current_time = time.time()
 
-                                elif current_state == S_IN_START:
-                                    if confirmed_status == 0x03: current_state = S_IN_MID
-                                    elif confirmed_status in (0x00, 0x02): current_state = S_IN_END
+                        # 状态确认逻辑（带间隔控制）
+                        if not in_confirmation:
+                            # 不在确认状态，立即检查是否需要开始确认
+                            if raw_status != confirmed_status:
+                                in_confirmation = True
+                                target_status = raw_status
+                                current_detect_count = 1
+                                last_confirm_check_time = current_time
+                                required_count = get_required_count(target_status)
+                                print(
+                                    f"开始状态确认: {confirmed_status:02X}->{target_status:02X} 间隔{DETECT_INTERVAL}s 需{required_count}次")
+                        else:
+                            # 在确认状态，检查间隔
+                            if current_time - last_confirm_check_time >= DETECT_INTERVAL:
+                                last_confirm_check_time = current_time
 
-                                elif current_state == S_IN_MID:
-                                    if confirmed_status == 0x02: current_state = S_IN_END
-                                    elif confirmed_status == 0x00:
-                                        if self.write_done: self._finish(DATA_TYPE_INBOUND, current_state, process_start_time, last_report_time, report_cooldown)
-                                        else: self._abort()
-                                        current_state = S_IDLE; self.direction = 0
-                                        self.start_rfid_loop_query(False); process_start_time = None
+                                if raw_status == target_status:
+                                    current_detect_count += 1
+                                    required_count = get_required_count(target_status)
 
-                                elif current_state == S_IN_END:
-                                    if confirmed_status == 0x00:
-                                        if ct - last_report_time >= report_cooldown:
-                                            self._finish(DATA_TYPE_INBOUND, current_state, process_start_time, last_report_time, report_cooldown)
-                                            last_report_time = ct
-                                        current_state = S_IDLE; self.direction = 0
-                                    elif confirmed_status == 0x01: self._abort(); current_state = S_IDLE
+                                    if current_detect_count >= required_count:
+                                        # 确认完成
+                                        old_confirmed_status = confirmed_status
+                                        confirmed_status = target_status
+                                        in_confirmation = False
+                                        current_detect_count = 0
 
-                                elif current_state == S_OUT_START:
-                                    if confirmed_status == 0x03: current_state = S_OUT_MID
-                                    elif confirmed_status in (0x00, 0x01): current_state = S_OUT_END
+                                        # 状态确认完成，进行状态机处理
+                                        current_status = confirmed_status
+                                        self.current_status = current_status
 
-                                elif current_state == S_OUT_MID:
-                                    if confirmed_status == 0x01: current_state = S_OUT_END
-                                    elif confirmed_status == 0x00:
-                                        if self.write_done: self._finish(DATA_TYPE_OUTBOUND, current_state, process_start_time, last_report_time, report_cooldown)
-                                        else: self._abort()
-                                        current_state = S_IDLE; self.direction = 0
-                                        self.start_rfid_loop_query(False); process_start_time = None
+                                        print(f"状态确认完成: {old_confirmed_status:02X}->{current_status:02X}, 当前状态: {current_state}")
 
-                                elif current_state == S_OUT_END:
-                                    if confirmed_status == 0x00:
-                                        if ct - last_report_time >= report_cooldown:
-                                            self._finish(DATA_TYPE_OUTBOUND, current_state, process_start_time, last_report_time, report_cooldown)
-                                            last_report_time = ct
-                                        current_state = S_IDLE; self.direction = 0
-                                    elif confirmed_status == 0x02: self._abort(); current_state = S_IDLE
+                                        # 记录状态变化时间
+                                        last_state_change_time = time.time()
 
-                        # 超时
-                        if current_state != S_IDLE and process_start_time and ct - last_state_change_time > idle_timeout:
-                            self._abort(); current_state = S_IDLE; self.direction = 0; process_start_time = None
-                            in_confirmation = False; confirmed_status = 0; target_status = 0; current_detect_count = 0
-                    time.sleep(0.01)
-                except Exception: time.sleep(0.5)
-        threading.Thread(target=_run, daemon=True).start()
+                                        # 原有的状态机处理逻辑
+                                        old_state = current_state
+
+                                        if current_state == STATE_IDLE:
+                                            if current_status == 0x01:  # 光栅1遮挡
+                                                current_state = STATE_INBOUND_START
+                                                self.direction = 1
+                                                self.start_rfid_loop_query(True)
+                                                process_start_time = time.time()
+                                                print("入库开始：光栅1遮挡")
+                                                self._send_tcp_cargo_in_message()
+
+                                                # 新增：清空条码缓存，开始收集入库条码
+                                                self.clear_barcode_cache()
+
+                                                # # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
+
+                                            elif current_status == 0x02:  # 光栅2遮挡
+                                                current_state = STATE_OUTBOUND_START
+                                                self.direction = 2
+                                                self.start_rfid_loop_query(True)
+                                                process_start_time = time.time()
+                                                print("出库开始：光栅2遮挡")
+                                                self._send_tcp_cargo_in_message()
+
+                                                # 新增：清空条码缓存，开始收集出库条码
+                                                self.clear_barcode_cache()
+
+                                                # # 货物进入通道，执行写标签（覆盖Path1和Path2）
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
+
+                                        elif current_state == STATE_INBOUND_START:
+                                            if current_status == 0x03:  # 光栅1+2同时遮挡
+                                                current_state = STATE_INBOUND_MIDDLE
+                                                print("入库中间：光栅1+2同时遮挡")
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
+                                            elif current_status == 0x00:  # 无遮挡
+                                                current_state = STATE_INBOUND_END
+                                                print("入库路径2：光栅1遮挡后直接无遮挡")
+                                            elif current_status == 0x02:  # 光栅2遮挡
+                                                current_state = STATE_INBOUND_END
+                                                print("入库结束：光栅2遮挡（直接进入）")
+
+                                        elif current_state == STATE_INBOUND_MIDDLE:
+                                            if current_status == 0x02:  # 光栅2遮挡
+                                                current_state = STATE_INBOUND_END
+                                                print("入库结束：光栅2遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
+                                                        self._send_tcp_cargo_out_message()
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"入库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 入库中断
+                                                    self._send_tcp_cargo_out_message()
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("入库中断：中间状态检测到无遮挡")
+
+                                        elif current_state == STATE_INBOUND_END:
+                                            if current_status == 0x02:  # 光栅2遮挡
+                                                print("入库结束：检测到光栅2遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                # 完成入库
+                                                current_state = STATE_IDLE
+                                                self.direction = 0
+                                                self.start_rfid_loop_query(False)
+                                                process_start_time = None
+
+                                                # 防重复报告
+                                                if current_time - last_report_time >= report_cooldown:
+                                                    # 新增：获取本次入库的所有条码
+                                                    current_barcodes = self.get_all_barcodes()
+                                                    # self._send_tcp_pass_message()
+                                                    self.report_rfid_tags_via_tcp()
+                                                    self._send_tcp_cargo_out_message()
+                                                    self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
+                                                                                   barcodes=current_barcodes)
+                                                    last_report_time = current_time
+                                                    print(f"入库完成，包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    print("入库完成（跳过重复报告）")
+                                            elif current_status == 0x01:  # 又回到光栅1遮挡
+                                                # 异常情况
+                                                current_state = STATE_IDLE
+                                                self.direction = 0
+                                                self.start_rfid_loop_query(False)
+                                                process_start_time = None
+                                                self.tag_history.clear()  # 清空未完成的标签
+
+                                                # 新增：异常时也清空条码缓存
+                                                self.clear_barcode_cache()
+
+                                                print("入库异常：结束状态又回到光栅1遮挡")
+
+                                        elif current_state == STATE_OUTBOUND_START:
+                                            if current_status == 0x03:  # 光栅1+2同时遮挡
+                                                current_state = STATE_OUTBOUND_MIDDLE
+                                                print("出库中间：光栅1+2同时遮挡")
+                                                # if not self.write_done and not self.write_in_progress:
+                                                #     self._execute_fixed_write()
+                                            elif current_status == 0x00:  # 无遮挡
+                                                current_state = STATE_OUTBOUND_END
+                                                print("出库路径2：光栅2遮挡后直接无遮挡")
+                                            elif current_status == 0x01:  # 光栅1遮挡
+                                                current_state = STATE_OUTBOUND_END
+                                                print("出库结束：光栅1遮挡（直接进入）")
+
+                                        elif current_state == STATE_OUTBOUND_MIDDLE:
+                                            if current_status == 0x01:  # 光栅1遮挡
+                                                current_state = STATE_OUTBOUND_END
+                                                print("出库结束：光栅1遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
+                                                        self._send_tcp_cargo_out_message()
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"出库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 出库中断
+                                                    self._send_tcp_cargo_out_message()
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("出库中断：中间状态检测到无遮挡")
+
+                                        elif current_state == STATE_OUTBOUND_END:
+                                            if current_status == 0x01:  # 光栅1遮挡
+                                                print("出库结束：检测到光栅1遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                # 完成出库
+                                                current_state = STATE_IDLE
+                                                self.direction = 0
+                                                self.start_rfid_loop_query(False)
+                                                process_start_time = None
+
+                                                # 防重复报告
+                                                if current_time - last_report_time >= report_cooldown:
+                                                    # 新增：获取本次出库的所有条码
+                                                    current_barcodes = self.get_all_barcodes()
+                                                    # self._send_tcp_pass_message()
+                                                    self.report_rfid_tags_via_tcp()
+                                                    self._send_tcp_cargo_out_message()
+                                                    self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
+                                                                                   barcodes=current_barcodes)
+                                                    last_report_time = current_time
+                                                    print(f"出库完成，包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    print("出库完成（跳过重复报告）")
+                                            elif current_status == 0x02:  # 又回到光栅2遮挡
+                                                # 异常情况
+                                                current_state = STATE_IDLE
+                                                self.direction = 0
+                                                self.start_rfid_loop_query(False)
+                                                process_start_time = None
+                                                self.tag_history.clear()  # 清空未完成的标签
+
+                                                # 新增：异常时也清空条码缓存
+                                                self.clear_barcode_cache()
+
+                                                print("出库异常：结束状态又回到光栅2遮挡")
+
+                                        # 处理其他异常状态转换
+                                        if current_status == 0x00 and current_state != STATE_IDLE:
+                                            if current_state not in [STATE_INBOUND_END, STATE_OUTBOUND_END]:
+                                                if (current_state == STATE_INBOUND_START and previous_status == 0x01) or \
+                                                        (
+                                                                current_state == STATE_OUTBOUND_START and previous_status == 0x02):
+                                                    print(f"允许的路径2：状态{current_state}检测到无遮挡")
+                                                else:
+                                                    print(f"异常中断：状态{current_state}检测到无遮挡，不累积识别总量")
+                                                    self._send_tcp_cargo_out_message()
+                                                    self.start_rfid_loop_query(False)
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    process_start_time = None
+                                                    self.tag_history.clear()  # 清空未完成的标签记录
+
+                                                    # 新增：异常中断时也清空条码缓存
+                                                    self.clear_barcode_cache()
+
+                                        # 如果状态发生变化，更新状态变化时间
+                                        if old_state != current_state:
+                                            last_state_change_time = time.time()
+
+                                        previous_status = current_status
+
+                                    else:
+                                        # 继续确认中
+                                        print(
+                                            f"确认中: {target_status:02X} {current_detect_count}/{required_count}次 下次{last_confirm_check_time + DETECT_INTERVAL:.2f}s")
+                                else:
+                                    # 状态变化，重新开始确认
+                                    target_status = raw_status
+                                    current_detect_count = 1
+                                    required_count = get_required_count(target_status)
+                                    print(f"确认中断，重新确认: {target_status:02X} 需{required_count}次")
+
+                        # 调试信息
+                        # if in_confirmation and current_detect_count < get_required_count(target_status):
+                        #     required_count = get_required_count(target_status)
+                        #     print(f"状态确认中: {target_status:02X} 连续{current_detect_count}/{required_count}次")
+
+                        self.handle_serial_data(data)
+
+                    # 超时检测
+                    current_time = time.time()
+                    if current_state != STATE_IDLE and process_start_time is not None:
+                        if current_time - last_state_change_time > idle_timeout:
+                            print(f"超时检测：状态{current_state}超过{idle_timeout}秒无变化，重置状态")
+                            self._send_tcp_cargo_out_message()
+                            self.start_rfid_loop_query(False)
+                            current_state = STATE_IDLE
+                            self.direction = 0
+                            process_start_time = None
+                            self.tag_history.clear()
+                            print("系统已重置：超时保护，不累积识别总量")
+                            # 重置确认机制
+                            in_confirmation = False
+                            confirmed_status = 0
+                            target_status = 0
+                            current_detect_count = 0
+                            previous_status = 0
+                            last_confirm_check_time = 0
+
+                            # 新增：超时重置时也清空条码缓存
+                            self.clear_barcode_cache()
+
+                    # 控制读取间隔
+                    elapsed = time.time() - start_time
+                    sleep_time = max(0, read_interval - elapsed)
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+
+                except Exception as e:
+                    self.add_message(f"串口读取错误: {e}")
+                    time.sleep(0.5)
+
+        threading.Thread(target=read_loop, daemon=True).start()
+        self.add_message("串口读取循环已启动（带状态确认机制，支持不同确认标准）")
 
     def start_rfid_loop_query(self, b_on):
+        print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
+            # 入库/出库开始：黄灯亮，清空缓存，不启动RFID读取（等待MIDDLE状态写入后再读取）
             self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
             self.serial_comm.write_register(self.green_light, False, timeout=0.5)
-            self.tag_history.clear(); self.write_done = False; self.write_in_progress = False
+            self.tag_history.clear()
+            self.write_done = False
+            self.write_in_progress = False
         else:
+            # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
             self.rfid_reader_serial.stoploop()
+
+    # RFID读写器相关方法
 
     def _finish(self, data_type, current_state, process_start_time, last_report_time, report_cooldown):
         self.start_rfid_loop_query(False)
@@ -542,6 +817,35 @@ class MainWindow:
     # ===================================================================
     #  RFID数据解析
     # ===================================================================
+    def handle_serial_data(self, data):
+        """处理串口接收到的数据"""
+        def update_ui():
+            try:
+                hex_data = ' '.join([f'{b:02X}' for b in data])
+                self.parse_serial_data(data)
+            except Exception as e:
+                self.add_message(f"处理串口数据错误: {e}")
+        self.root.after(0, update_ui)
+
+    def parse_serial_data(self, data):
+        """解析串口数据"""
+        try:
+            if len(data) >= 8:
+                if data[0] == 0xFE:
+                    cmd = data[1]
+                    self.add_message(f"收到串口命令响应: 0x{cmd:02X}")
+        except Exception as e:
+            self.add_message(f"解析串口数据错误: {e}")
+
+    def handle_register_response(self, data):
+        """处理寄存器响应数据"""
+        try:
+            if len(data) >= 6:
+                register_value = (data[3] << 8) | data[4]
+                self.add_message(f"寄存器值: {register_value}")
+        except Exception as e:
+            self.add_message(f"处理寄存器响应错误: {e}")
+
     def on_rfid_serial_data(self, data: bytes):
         self.serial_rfid_buffer.extend(data)
         while True:
@@ -582,21 +886,45 @@ class MainWindow:
             tag._parse_product_info(); tag.success = True; return tag
         except Exception as e: tag.error_message = str(e); return tag
 
-    def _add_serial_tag_to_history(self, tag):
-        if not tag.success: return
-        exists = any(t.epc == tag.epc for t in self.tag_history)
-        if not exists:
-            self.tag_history.append(tag)
-            if len(self.tag_history) > self.max_history_size: self.tag_history.pop(0)
-        elif self.write_done:
-            for t in self.tag_history:
-                if t.epc == tag.epc: t.user_data = tag.user_data; break
-        self.current_load = len(self.tag_history)
-        self.current_load_label.configure(text=str(self.current_load))
+    def _add_serial_tag_to_history(self, tag: RFIDTag):
+        """将串口 RFID 标签添加到历史记录（基于 EPC 去重，更新 UI）"""
+        if not tag.success:
+            self.add_message(f"标签无效: {tag.error_message}")
+            return
 
-    # ===================================================================
-    #  条码
-    # ===================================================================
+        # 检查 EPC 是否已存在于历史记录中
+        epc_exists = any(existing_tag.epc == tag.epc for existing_tag in self.tag_history)
+
+        if not epc_exists:
+            # 添加到历史记录
+            self.tag_history.append(tag)
+            # 限制历史记录大小
+            if len(self.tag_history) > self.max_history_size:
+                self.tag_history.pop(0)
+
+            # 更新当前装载数量
+            self.current_load = len(self.tag_history)
+            self.current_load_label.config(text=str(self.current_load))
+
+            # 在取标内容区域追加显示标签信息（可选）
+            # display_text = self._format_tag_display(tag)
+            # print(display_text)
+            # self.update_element_text(self.fetch_text, display_text, clear_first=False)
+
+            # 添加日志消息
+            self.add_message(f"串口RFID读取到新标签: {tag.product_name} (EPC: {tag.epc}, RSSI: {tag.rssi:.1f}dBm)")
+        else:
+            # 写入完成后读回的标签，根据写入类型覆盖对应字段
+            if self.write_done:
+                for existing_tag in self.tag_history:
+                    if existing_tag.epc == tag.epc:
+                        if self.b_write_epc:
+                            existing_tag.epc = tag.epc
+                        existing_tag.user_data = tag.user_data
+                        self.add_message(f"串口RFID更新已写入标签数据，EPC: {tag.epc}")
+                        break
+            else:
+                self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
     def on_barcode_received(self, barcode):
         if not barcode: return
         self.root.after(0, lambda: self.update_barcode(barcode))
@@ -616,18 +944,45 @@ class MainWindow:
     #  写标签
     # ===================================================================
     def _execute_fixed_write(self, b_write_epc=False):
-        self.write_in_progress = True; self.b_write_epc = b_write_epc
+        """
+        同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取。
+        :param b_write_epc: True=写EPC, False=写USER_DATA
+        """
+        self.write_in_progress = True
+        self.b_write_epc = b_write_epc
+
+        # 优先使用TCP下发的数据，否则使用固定默认数据
         write_data = self.pending_write_data if self.pending_write_data else self.FIXED_DEFAULT_DATA
-        self.actual_write_data = write_data
-        wt = "EPC" if b_write_epc else "USER_DATA"
-        self.log(f"开始写入{wt}: {write_data.hex().upper()}", "INFO")
-        wf = self.rfid_reader_serial.write_tag_with_epcdata if b_write_epc else self.rfid_reader_serial.write_tag_with_userdata
-        ok = wf(write_data)
-        if not ok: ok = wf(write_data)
-        self.write_done = ok; self.write_in_progress = False
-        self.rfid_reader_serial.startloop_tid_user()
-        self.log(f"写{wt}{'成功' if ok else '失败'}", "INFO" if ok else "WARN")
-        return ok
+        self.actual_write_data = write_data  # 记录实际写入的数据，用于后续校验
+        data_hex = ' '.join(f'{b:02X}' for b in write_data)
+        source = "TCP下发" if self.pending_write_data else "默认"
+        write_type = "EPC" if b_write_epc else "USER_DATA"
+        self.add_message(f"开始写入标签{write_type}({source}): {data_hex}")
+
+        # 根据类型调用不同的写方法
+        write_func = self.rfid_reader_serial.write_tag_with_epcdata if b_write_epc else self.rfid_reader_serial.write_tag_with_userdata
+        success = write_func(write_data)
+        if success:
+            self.write_done = True
+            self.write_in_progress = False
+            self.add_message(f"写标签{write_type}成功，启动验证读取...")
+            self.rfid_reader_serial.startloop_tid_user()
+            return True
+        else:
+            self.add_message(f"写标签{write_type}失败，重试中...")
+            success = write_func(write_data)
+            if success:
+                self.write_done = True
+                self.write_in_progress = False
+                self.add_message(f"重试写标签{write_type}成功，启动验证读取...")
+                self.rfid_reader_serial.startloop_tid_user()
+                return True
+            else:
+                self.write_done = False
+                self.write_in_progress = False
+                self.add_message(f"写标签{write_type}失败（已重试），读取原始标签...")
+                self.rfid_reader_serial.startloop_tid_user()
+                return False
 
     def on_rfid_write_result(self, success):
         self.log(f"写标签结果: {'成功' if success else '失败'}", "INFO" if success else "WARN")
@@ -663,19 +1018,54 @@ class MainWindow:
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=False))
 
     def on_tcp_message(self, data: bytes, addr):
-        try: msg = data.decode('utf-8').strip()
-        except: return
-        self.log(f"TCP [{addr[0]}:{addr[1]}] {msg}", "DEBUG")
-        try: j = json.loads(msg)
-        except: return
-        if not isinstance(j, dict): return
-        t = j.get("type", "")
-        if t == "write_epc":
-            epc = j.get("epc")
-            if epc: self.on_cmd_write_epc(bytes(epc))
-        elif t == "write_user":
-            ud = j.get("user_data")
-            if ud: self.on_cmd_write_user(bytes(ud))
+        """
+        收到 TCP 客户端消息时的回调（新）
+        支持指令格式:
+          {"type": "write_epc",   "epc": [...]}
+          {"type": "write_user",  "user_data": [...]}
+        :param data: 原始字节数据
+        :param addr: 客户端地址 (ip, port)
+        """
+        print('on_tcp_message')
+        try:
+            msg = data.decode('utf-8').strip()
+            print(msg)
+        except UnicodeDecodeError:
+            print(f"TCP数据解码失败: {data.hex()}")
+            return
+
+        self.add_message(f"TCP 客户端 [{addr[0]}:{addr[1]}] 发来: {msg}")
+
+        # 尝试解析 JSON
+        try:
+            json_data = json.loads(msg)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            self.add_message(f"TCP 收到非JSON数据: {msg}")
+            return
+
+        if not isinstance(json_data, dict):
+            return
+
+        cmd_type = json_data.get("type", "")
+
+        if cmd_type == "write_epc":
+            epc_list = json_data.get("epc")
+            if epc_list is None:
+                self.add_message("write_epc指令缺少 'epc' 字段")
+                return
+            epc_data = bytes(epc_list)
+            self.on_cmd_write_epc(epc_data)
+
+        elif cmd_type == "write_user":
+            user_list = json_data.get("user_data")
+            if user_list is None:
+                self.add_message("write_user指令缺少 'user_data' 字段")
+                return
+            user_data = bytes(user_list)
+            self.on_cmd_write_user(user_data)
+
+        else:
+            self.add_message(f"TCP 收到未知指令类型: {cmd_type}")
 
     # ===================================================================
     #  TCP发送
