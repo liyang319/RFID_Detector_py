@@ -1,7 +1,8 @@
 # main_win.py
 # tkinter 界面 + 完整业务逻辑（与main.py相同）
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+from datetime import datetime
 import time
 import threading
 import json
@@ -21,7 +22,7 @@ SERIAL_COM_IO = "/dev/tty.usbserial-14240"
 SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
 SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
 REPORT_USE_MQTT = False
-REPORT_TO_SERVER = False
+REPORT_TO_SERVER = True
 API_BASE_URL = "http://127.0.0.1:8000"
 
 ENTRY_WIDTH = 18
@@ -1100,10 +1101,15 @@ class MainWindow:
 
     def _send_tcp_cargo_in_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_in"}, ensure_ascii=False))
+        self.add_message("TCP发送: cargo_in")
+
     def _send_tcp_cargo_out_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_out"}, ensure_ascii=False))
+        self.add_message("TCP发送: cargo_out")
+
     def _send_tcp_report_barcode_message(self, barcode):
         self.tcp_server.send_to_all(json.dumps({"type": "report_barcode", "barcode": barcode}, ensure_ascii=False))
+        self.add_message(f"TCP发送: report_barcode {barcode}")
 
     @staticmethod
     def _hex_str_to_bytes(hex_str):
