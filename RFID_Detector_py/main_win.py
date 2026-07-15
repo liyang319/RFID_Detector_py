@@ -403,6 +403,12 @@ class MainWindow:
                 self.rfid_reader_serial.start_receive_loop()
                 self.rfid_reader_serial.start_firmware()
                 self.rfid_reader_serial.set_write_callback(self.on_rfid_write_result)
+                # user_data = bytes([
+                #     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
+                #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
+                # ])
+                # self.rfid_reader_serial.write_tag_with_epcdata(user_data)
+                # self.rfid_reader_serial.startloop_tid_user()
             else:
                 self.add_message("串口 RFID 读写器连接失败")
         threading.Thread(target=connect, daemon=True).start()
@@ -831,10 +837,18 @@ class MainWindow:
     def parse_serial_data(self, data):
         """解析串口数据"""
         try:
-            if len(data) >= 8:
-                if data[0] == 0xFE:
-                    cmd = data[1]
+            if len(data) >= 8:  # 基本长度检查
+                # 示例解析逻辑
+                if data[0] == 0xFE:  # 设备地址
+                    cmd = data[1]  # 命令字
                     self.add_message(f"收到串口命令响应: 0x{cmd:02X}")
+
+                    # 根据命令类型处理
+                    if cmd == 0x01:
+                        self.handle_register_response(data)
+                    else:
+                        self.add_message(f"未知串口命令响应: 0x{cmd:02X}")
+
         except Exception as e:
             self.add_message(f"解析串口数据错误: {e}")
 
@@ -1123,6 +1137,7 @@ class MainWindow:
             "user_data": self._hex_str_to_bytes(user_data) if user_data else [],
             "write_result": write_result
         }, ensure_ascii=False))
+        self.add_message(f"TCP发送: report_rfid write_result={write_result}")
 
     def report_rfid_tags_via_tcp(self):
         for tag in self.tag_history:
