@@ -239,12 +239,21 @@ class MainWindow:
             e = self._entry(frame)
             e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=4)
             setattr(self, attr, e)
-        btn_frame = tk.Frame(frame, bg='white')
-        btn_frame.grid(row=3, column=0, columnspan=2, sticky='ew', padx=10, pady=8)
-        bg = {'font': ("Microsoft YaHei", 9, "bold"), 'fg': 'white', 'relief': 'flat', 'bd': 0, 'padx': 12, 'pady': 4}
-        tk.Button(btn_frame, text="读取参数", **bg, bg='#4CAF50', activebackground='#45a049', activeforeground='white').pack(side='left', padx=3)
-        tk.Button(btn_frame, text="设置参数", **bg, bg='#FF9800', activebackground='#F57C00', activeforeground='white').pack(side='left', padx=3)
-        tk.Button(btn_frame, text="重启RFID", **bg, bg='#F44336', activebackground='#D32F2F', activeforeground='white').pack(side='left', padx=3)
+        btn_outer = self._labelframe(frame, "控制按钮")
+        btn_outer.grid(row=3, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
+        btn_frame = tk.Frame(btn_outer, bg='white')
+        btn_frame.pack(fill='x', padx=10, pady=4)
+        style = ttk.Style()
+        style.theme_use('clam')  # clam主题支持按钮背景色
+        for color, name in [('#4CAF50', 'GreenBtn'), ('#FF9800', 'OrangeBtn'), ('#F44336', 'RedBtn')]:
+            style.configure(f'{name}.TButton', background=color, foreground='white',
+                            font=("Microsoft YaHei", 9, "bold"), borderwidth=0, relief='flat')
+            style.map(f'{name}.TButton', background=[('active', color), ('!active', color)])
+        for i in range(3):
+            btn_frame.columnconfigure(i, weight=1)
+        ttk.Button(btn_frame, text='读取参数', style='GreenBtn.TButton').grid(row=0, column=0, padx=5, sticky='ew')
+        ttk.Button(btn_frame, text='设置参数', style='OrangeBtn.TButton').grid(row=0, column=1, padx=5, sticky='ew')
+        ttk.Button(btn_frame, text='重启RFID', style='RedBtn.TButton').grid(row=0, column=2, padx=5, sticky='ew')
 
     def _build_debug_group(self, parent):
         frame = self._labelframe(parent, "调试信息")
