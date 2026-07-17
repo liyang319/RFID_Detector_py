@@ -262,11 +262,16 @@ class MainWindow:
     def _set_entry(self, attr, text):
         e = getattr(self, attr, None)
         if e:
-            e.configure(state='normal'); e.delete(0, 'end'); e.insert(0, str(text)); e.configure(state='readonly')
+            e.configure(state='normal')
+            e.delete(0, 'end')
+            e.insert(0, str(text))
+            e.configure(state='readonly')
 
     def _set_editable_entry(self, attr, text):
         e = getattr(self, attr, None)
-        if e: e.delete(0, 'end'); e.insert(0, str(text))
+        if e:
+            e.delete(0, 'end')
+            e.insert(0, str(text))
 
     def add_message(self, msg: str): self.log(msg, "INFO")
     def log(self, message: str, level: str = "INFO"):
@@ -274,7 +279,8 @@ class MainWindow:
         self.debug_text.configure(state='normal')
         self.debug_text.insert('end', f"[{ts}] [{level}] ", (level,))
         self.debug_text.insert('end', f"{message}\n", ("msg",))
-        self.debug_text.see('end'); self.debug_text.configure(state='disabled')
+        self.debug_text.see('end')
+        self.debug_text.configure(state='disabled')
         if int(self.debug_text.index('end-1c').split('.')[0]) > 500:
             self.debug_text.delete('1.0', '100.0')
 
@@ -815,7 +821,8 @@ class MainWindow:
     def _abort(self):
         self._send_tcp_cargo_out_message()
         self.start_rfid_loop_query(False)
-        self.tag_history.clear(); self.clear_barcode_cache()
+        self.tag_history.clear()
+        self.clear_barcode_cache()
 
     def _show_last_tag(self, tag):
         self.update_tid(tag.tid)
@@ -1216,28 +1223,36 @@ class MainWindow:
 
     def report_rfid_tags_via_tcp(self):
         for tag in self.tag_history:
-            if not tag.success: continue
-            rd = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
-            wd = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
-            self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, "success" if rd == wd else "fail")
+            if not tag.success:
+                continue
+            read_data = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
+            written_data = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
+            self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, "success" if read_data == written_data else "fail")
 
     # ===================================================================
     #  上报服务端
     # ===================================================================
     def report_rfid_tags_to_server(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
-        if not REPORT_TO_SERVER: self.log("REPORT_TO_SERVER=False, 跳过上报", "DEBUG"); return False
-        if barcodes is None: barcodes = []
-        if not (self.tag_history or barcodes): return False
-        tag_data = []; wmc = 0
+        if not REPORT_TO_SERVER:
+            self.log("REPORT_TO_SERVER=False, 跳过上报", "DEBUG")
+            return False
+        if barcodes is None:
+            barcodes = []
+        if not (self.tag_history or barcodes):
+            return False
+        tag_data = []
+        write_match_count = 0
         for tag in self.tag_history:
-            if not tag.success: continue
-            rd = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
-            wd = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
-            m = rd == wd
-            if m: wmc += 1
+            if not tag.success:
+                continue
+            read_data = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
+            written_data = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
+            data_match = (read_data == written_data)
+            if data_match:
+                    write_match_count += 1
             tag_data.append({'epc': tag.epc, 'tid': tag.tid, 'user_data': tag.user_data, 'rssi': tag.rssi,
                              'timestamp': tag.timestamp, 'product_name': tag.product_name,
-                             'antenna_num': tag.antenna_num, 'write_verified': m})
+                             'antenna_num': tag.antenna_num, 'write_verified': data_match})
         if tag_data:
             if data_type == DATA_TYPE_INBOUND: self.inbound_total += len(tag_data)
             else: self.outbound_total += len(tag_data)
@@ -1245,7 +1260,7 @@ class MainWindow:
             if REPORT_USE_MQTT:
                 self.send_mqtt_command('report_tags', data_type, {
                     'tags': tag_data, 'barcodes': barcodes,
-                    'validation': {'write_verified_count': wmc, 'write_total_count': len(tag_data)},
+                    'validation': {'write_verified_count': write_match_count, 'write_total_count': len(tag_data)},
                     'write_success': self.write_done
                 })
             else:
@@ -1260,13 +1275,17 @@ class MainWindow:
                         req = urllib.request.Request(f"{API_BASE_URL}/api/report-rfid/",
                                                      json.dumps(body, ensure_ascii=False).encode('utf-8'),
                                                      {'Content-Type': 'application/json'}, method='POST')
-                        with urllib.request.urlopen(req, timeout=5) as r: self.log(f"HTTP上报 OK EPC={td['epc']}", "INFO")
-                    except Exception as e: self.log(f"HTTP上报失败: {e}", "ERROR")
+                        with urllib.request.urlopen(req, timeout=5) as r:
+                            self.log(f"HTTP上报 OK EPC={td['epc']}", "INFO")
+                    except Exception as e:
+                        self.log(f"HTTP上报失败: {e}", "ERROR")
             # 完成后将最后标签的TID/EPC填入集成设备信息
             if self.tag_history:
                 last = self.tag_history[-1]
                 self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
-            self.tag_history.clear(); self.write_done = False; self.actual_write_data = None
+            self.tag_history.clear()
+            self.write_done = False
+            self.actual_write_data = None
         return True
 
     # ===================================================================
@@ -1274,7 +1293,9 @@ class MainWindow:
     # ===================================================================
     def show(self):
         if self._owns_root: self.root.mainloop()
-    def run(self): self.show()
+
+    def run(self):
+        self.show()
 
 
 if __name__ == "__main__":
