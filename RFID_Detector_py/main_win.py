@@ -872,26 +872,66 @@ class MainWindow:
                 if tag: self.root.after(0, lambda t=tag: self._add_serial_tag_to_history(t))
             else: break
 
-    def _try_parse_one_packet_tid_user(self, buf):
-        hdr = bytes([0xFF, 0x47, 0xAA]); hl = len(hdr)
-        fi = -1
-        for i in range(len(buf) - hl + 1):
-            if buf[i] == 0xFF and buf[i + 2] == 0xAA:
-                if buf[i + 1] == 0x47:
-                    fi = i
+    def _try_parse_one_packet_tid_user(self, buffer: bytearray):
+        """
+        通过查找 FF 47 AA 特征头边界来提取一个完整包（TID+USER格式）。
+        处理正常包（FF 47 AA）和异常包（FF XX AA, XX≠47）混合的情况。
+        返回 (RFIDTag, consumed_bytes)
+        """
+        TID_USER_HEADER = bytes([0xFF, 0x47, 0xAA])
+        header_len = len(TID_USER_HEADER)
+
+        # 查找第一个有效包头位置（FF 47 AA）
+        first_idx = -1
+        for i in range(len(buffer) - header_len + 1):
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
+                if buffer[i + 1] == 0x47:
+                    first_idx = i
                     break
-        if fi == -1:
-            for i in range(len(buf) - 2):
-                if buf[i] == 0xFF and buf[i + 2] == 0xAA: return None, i + 3
-            return None, len(buf)
-        if fi > 0: return None, fi
-        si = -1
-        for i in range(fi + hl, len(buf) - hl + 1):
-            if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x47: si = i; break
-        if si == -1:
+                else:
+                    # 异常包（FF XX AA, XX≠47），跳过前3字节继续搜索
+                    pass
+
+        if first_idx == -1:
+            # 检查缓冲区中是否有任何 FF xx AA 开头的数据
+            has_any = False
+            for i in range(len(buffer) - 2):
+                if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
+                    # 找到异常包头，跳过前3字节
+                    print(f"[RFID Serial TID] 跳过异常包头 FF {buffer[i+1]:02X} AA，丢弃3字节")
+                    return None, i + 3
+                    # has_any = True — actually, we break above
+            # 没有找到任何 FF xx AA，丢弃所有数据
+            consumed = len(buffer)
+            print(f"[RFID Serial TID] 未找到有效包头，丢弃 {consumed} 字节")
+            return None, consumed
+
+        if first_idx > 0:
+            # 跳过包头前的无效数据（异常包或残留数据）
+            print(f"[RFID Serial TID] 跳过包头前无效数据 {first_idx} 字节")
+            return None, first_idx
+
+        # 查找第二个有效包头位置（用于确定包结束）
+        second_idx = -1
+        for i in range(first_idx + header_len, len(buffer) - header_len + 1):
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] == 0x47:
+                second_idx = i
+                break
+
+        if second_idx == -1:
+            # 只有一个包，但数据可能不完整，等待更多数据
             return None, 0
-        tag = self._parse_single_serial_packet_tid_user(bytes(buf[fi:si]))
-        return (tag, si) if tag.success else (None, hl)
+
+        # 提取从 first_idx 到 second_idx 之间的数据作为一个完整包
+        packet = bytes(buffer[first_idx:second_idx])
+        tag = self._parse_single_serial_packet_tid_user(packet)
+
+        if tag.success:
+            print(f"[RFID Serial TID] 解析成功: TID={tag.tid}, EPC={tag.epc}, USER_DATA={tag.user_data}")
+            return tag, second_idx
+        else:
+            print(f"[RFID Serial TID] 解析失败: {tag.error_message}，跳过当前包头")
+            return None, header_len
 
     def _parse_single_serial_packet_tid_user(self, data: bytes) -> RFIDTag:
         """解析一个完整的 TID+USER 格式数据包"""
