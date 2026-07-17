@@ -877,7 +877,9 @@ class MainWindow:
         fi = -1
         for i in range(len(buf) - hl + 1):
             if buf[i] == 0xFF and buf[i + 2] == 0xAA:
-                if buf[i + 1] == 0x47: fi = i; break
+                if buf[i + 1] == 0x47:
+                    fi = i
+                    break
         if fi == -1:
             for i in range(len(buf) - 2):
                 if buf[i] == 0xFF and buf[i + 2] == 0xAA: return None, i + 3
@@ -886,22 +888,53 @@ class MainWindow:
         si = -1
         for i in range(fi + hl, len(buf) - hl + 1):
             if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x47: si = i; break
-        if si == -1: return None, 0
+        if si == -1:
+            return None, 0
         tag = self._parse_single_serial_packet_tid_user(bytes(buf[fi:si]))
         return (tag, si) if tag.success else (None, hl)
 
-    def _parse_single_serial_packet_tid_user(self, data: bytes):
+    def _parse_single_serial_packet_tid_user(self, data: bytes) -> RFIDTag:
+        """解析一个完整的 TID+USER 格式数据包"""
         tag = RFIDTag()
         try:
-            if len(data) < 74: tag.error_message = f"长度不足:{len(data)}"; return tag
-            tag.tid = ' '.join(f'{b:02X}' for b in data[15:31])
-            tag.user_data = ' '.join(f'{b:02X}' for b in data[31:51])
-            tag.epc = ''.join(f'{b:02X}' for b in data[54:74])
-            r = data[7]; tag.rssi = r if r < 128 else r - 256
+            # 协议格式（0-based索引）：
+            # 0-2:   固定头 FF 47 AA
+            # 15-34:  TID 数据 (20字节)
+            # 31-50:  USER_DATA 数据 (20字节)
+            # 54-73:  EPC 数据 (20字节)
+
+            if len(data) < 74:
+                tag.success = False
+                tag.error_message = f"数据长度不足，需要至少74字节，实际 {len(data)}"
+                return tag
+
+            # TID (20字节)
+            tid_bytes = data[15:31]
+            tag.tid = ''.join(f'{b:02X}' for b in tid_bytes)
+
+            # USER_DATA (20字节)
+            user_bytes = data[31:51]
+            tag.user_data = ''.join(f'{b:02X}' for b in user_bytes)
+
+            # EPC (20字节)
+            epc_bytes = data[54:74]
+            tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
+
+            # RSSI (尝试从data[7]读取)
+            rssi_byte = data[7]
+            tag.rssi = rssi_byte if rssi_byte < 128 else rssi_byte - 256
+
+            # 天线号 (尝试从data[8]读取)
             tag.antenna_num = data[8] if len(data) > 8 else 0
+
             tag.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            tag._parse_product_info(); tag.success = True; return tag
-        except Exception as e: tag.error_message = str(e); return tag
+            tag._parse_product_info()
+            tag.success = True
+            return tag
+        except Exception as e:
+            tag.success = False
+            tag.error_message = f"解析异常: {str(e)}"
+            return tag
 
     def _add_serial_tag_to_history(self, tag: RFIDTag):
         """将串口 RFID 标签添加到历史记录（基于 EPC 去重，更新 UI）"""
