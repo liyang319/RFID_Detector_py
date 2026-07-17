@@ -280,14 +280,15 @@ class MainWindow:
 
     def update_runtime_display(self):
         elapsed = int(time.time() - self.start_time)
-        h, m = divmod(elapsed, 3600); _, _ = divmod(m, 60)
-        self.runtime_label.configure(text=f"{h:02d}时{m:02d}分")
+        h, rem = divmod(elapsed, 3600)
+        m, s = divmod(rem, 60)
+        self.runtime_label.configure(text=f"{h:02d}时{m:02d}分{s:02d}秒")
         self.root.after(1000, self.update_runtime_display)
 
     def update_barcode(self, text): self._set_entry('barcode_edit', text)
-    def update_tid(self, text): self._set_entry('tid_edit', text)
-    def update_epc(self, text): self._set_entry('epc_edit', text)
-    def update_pending_code(self, text): self._set_entry('pending_code_edit', text)
+    def update_tid(self, text): self._set_entry('tid_edit', text.replace(' ', ''))
+    def update_epc(self, text): self._set_entry('epc_edit', text.replace(' ', ''))
+    def update_pending_code(self, text): self._set_entry('pending_code_edit', text.replace(' ', ''))
     def get_rfid_params(self): return {'antenna': self.antenna_edit.get(), 'power': self.power_edit.get(), 'frequency': self.frequency_edit.get()}
 
     # ===================================================================
@@ -1188,6 +1189,10 @@ class MainWindow:
                                                      {'Content-Type': 'application/json'}, method='POST')
                         with urllib.request.urlopen(req, timeout=5) as r: self.log(f"HTTP上报 OK EPC={td['epc']}", "INFO")
                     except Exception as e: self.log(f"HTTP上报失败: {e}", "ERROR")
+            # 完成后将最后标签的TID/EPC填入集成设备信息
+            if self.tag_history:
+                last = self.tag_history[-1]
+                self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
             self.tag_history.clear(); self.write_done = False; self.actual_write_data = None
         return True
 
