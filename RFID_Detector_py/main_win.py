@@ -98,12 +98,12 @@ class MainWindow:
         title_frame.pack(fill='x', padx=15, pady=(15, 5))
         tk.Label(title_frame, text="北斗+RFID系统集成设备",
                  font=("Microsoft YaHei", 16, "bold"),
-                 bg='white', fg='#2c3e50').pack(side='left')
+                 bg='white', fg='#2c3e50').pack()
 
         main = tk.Frame(self.root, bg='white')
         main.pack(fill='both', expand=True, padx=15, pady=5)
-        main.columnconfigure(0, weight=2)
-        main.columnconfigure(1, weight=1)
+        main.columnconfigure(0, weight=1, uniform='col')
+        main.columnconfigure(1, weight=1, uniform='col')
         main.rowconfigure(0, weight=1)
 
         left_col = tk.Frame(main, bg='white')
@@ -112,7 +112,10 @@ class MainWindow:
         right_col.grid(row=0, column=1, sticky='nsew', padx=(8, 0))
 
         self._build_production_group(left_col)
+        # 弹性空白，将集成设备信息推至底部
+        tk.Frame(left_col, bg='white', height=1).pack(fill='both', expand=True)
         self._build_device_info_group(left_col)
+
         self._build_beidou_group(right_col)
         self._build_rfid_group(right_col)
         self._build_debug_group(right_col)
