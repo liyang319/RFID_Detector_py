@@ -251,9 +251,30 @@ class MainWindow:
             style.map(f'{name}.TButton', background=[('active', color), ('!active', color)])
         for i in range(3):
             btn_frame.columnconfigure(i, weight=1)
-        ttk.Button(btn_frame, text='读取参数', style='GreenBtn.TButton').grid(row=0, column=0, padx=5, sticky='ew')
-        ttk.Button(btn_frame, text='设置参数', style='OrangeBtn.TButton').grid(row=0, column=1, padx=5, sticky='ew')
-        ttk.Button(btn_frame, text='重启RFID', style='RedBtn.TButton').grid(row=0, column=2, padx=5, sticky='ew')
+        self.read_params_btn = ttk.Button(btn_frame, text='读取参数', style='GreenBtn.TButton',
+                                           command=self.on_read_rfid_params)
+        self.read_params_btn.grid(row=0, column=0, padx=5, sticky='ew')
+        self.set_params_btn = ttk.Button(btn_frame, text='设置参数', style='OrangeBtn.TButton',
+                                          command=self.on_set_rfid_params)
+        self.set_params_btn.grid(row=0, column=1, padx=5, sticky='ew')
+        self.reset_rfid_btn = ttk.Button(btn_frame, text='重启RFID', style='RedBtn.TButton',
+                                          command=self.on_reset_rfid)
+        self.reset_rfid_btn.grid(row=0, column=2, padx=5, sticky='ew')
+
+    def on_read_rfid_params(self):
+        """读取RFID参数"""
+        self.log("读取RFID参数", "INFO")
+        params = self.get_rfid_params()
+        self.log(f"天线={params['antenna']} 功率={params['power']} 频点={params['frequency']}", "INFO")
+
+    def on_set_rfid_params(self):
+        """设置RFID参数"""
+        params = self.get_rfid_params()
+        self.log(f"设置RFID参数: 天线={params['antenna']} 功率={params['power']} 频点={params['frequency']}", "INFO")
+
+    def on_reset_rfid(self):
+        """重启RFID"""
+        self.log("重启RFID设备", "WARN")
 
     def _build_debug_group(self, parent):
         frame = self._labelframe(parent, "调试信息")
