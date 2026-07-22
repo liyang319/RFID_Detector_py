@@ -308,8 +308,10 @@ class MainWindow:
     def _set_editable_entry(self, attr, text):
         e = getattr(self, attr, None)
         if e:
+            e.configure(state='normal')
             e.delete(0, 'end')
             e.insert(0, str(text))
+            e.configure(state='readonly')
 
     def add_message(self, msg: str): self.log(msg, "INFO")
     def log(self, message: str, level: str = "INFO"):
@@ -359,26 +361,34 @@ class MainWindow:
         # 16-17: 生产批号 hex (2字节)
         # 18-19: 袋/箱号 hex (2字节)
 
-        # 产品种类代码 (bytes 1-3)
-        product_code = data[1:4].decode('ascii', errors='replace')
+        # 产品种类代码 (bytes 1-3, ASCII)
+        product_bytes = data[1:4]
+        product_code = product_bytes.decode('ascii', errors='replace')
+        self.log(f"  产品种类: {product_bytes.hex().upper()} -> '{product_code}'", "DEBUG")
         product_name = get_product_name(product_code)
         self._set_editable_entry('product_type', product_name)
 
-        # 生产企业代码 (bytes 4-5)
-        manu_code = data[4:6].decode('ascii', errors='replace')
+        # 生产企业代码 (bytes 4-5, ASCII)
+        manu_bytes = data[4:6]
+        manu_code = manu_bytes.decode('ascii', errors='replace')
+        self.log(f"  生产企业: {manu_bytes.hex().upper()} -> '{manu_code}'", "DEBUG")
         manu_name = get_manufacturer_name(manu_code)
         self._set_editable_entry('manufacturer_edit', manu_name)
 
         # 生产许可证编号 (bytes 6-7, big-endian)
         license_num = int.from_bytes(data[6:8], 'big')
+        self.log(f"  许可证号: {data[6:8].hex().upper()} -> {license_num:04d}", "DEBUG")
         self._set_editable_entry('license_number', f"{license_num:04d}")
 
         # 规格型号 (bytes 8-9, big-endian)
         spec_val = int.from_bytes(data[8:10], 'big')
+        self.log(f"  规格型号: {data[8:10].hex().upper()} -> {spec_val}", "DEBUG")
         self._set_editable_entry('type_box', f"{spec_val}")
 
-        # 包装方式 (byte 10)
+        # 包装方式 (byte 10, ASCII)
         pkg_byte = data[10]
+        pkg_char = chr(pkg_byte) if 0x20 <= pkg_byte < 0x7F else '?'
+        self.log(f"  包装方式: {pkg_byte:02X} -> '{pkg_char}'", "DEBUG")
         pkg_name = get_package_name(pkg_byte)
         if pkg_name == "袋装":
             self.pkg_var.set("bag")
@@ -387,20 +397,24 @@ class MainWindow:
 
         # 净质量 (bytes 11-12, big-endian)
         weight_val = int.from_bytes(data[11:13], 'big')
+        self.log(f"  净质量: {data[11:13].hex().upper()} -> {weight_val}", "DEBUG")
         self._set_editable_entry('weight_box', f"{weight_val}")
 
         # 生产日期 (bytes 13-15: yy, mm, dd)
         yy = data[13]
         mm = data[14]
         dd = data[15]
+        self.log(f"  生产日期: {yy:02X} {mm:02X} {dd:02X} -> 20{yy:02d}-{mm:02d}-{dd:02d}", "DEBUG")
         self._set_editable_entry('production_date', f"{yy:02d}{mm:02d}{dd:02d}")
 
         # 生产批号 (bytes 16-17, big-endian)
         batch_val = int.from_bytes(data[16:18], 'big')
+        self.log(f"  生产批号: {data[16:18].hex().upper()} -> {batch_val:04d}", "DEBUG")
         self._set_editable_entry('batch_number', f"{batch_val:04d}")
 
-        # 袋/箱号 (bytes 18-19, big-endian)
+        # 生产袋/箱号 (bytes 18-19, big-endian)
         box_val = int.from_bytes(data[18:20], 'big')
+        self.log(f"  袋/箱号: {data[18:20].hex().upper()} -> {box_val:04d}", "DEBUG")
         self._set_editable_entry('package_number', f"{box_val:04d}")
 
         # 信息代码
