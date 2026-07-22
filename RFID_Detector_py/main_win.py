@@ -135,7 +135,7 @@ class MainWindow:
 
     def _label(self, parent, text):
         return tk.Label(parent, text=text, font=("Microsoft YaHei", 10),
-                        bg='white', fg=self.c['fg'], anchor='e', width=LABEL_WIDTH)
+                        bg='white', fg=self.c['fg'], anchor='w', width=LABEL_WIDTH)
 
     def _label_value(self, parent, text, fg=None):
         return tk.Label(parent, text=text, font=("Microsoft YaHei", 10, "bold"),
@@ -154,42 +154,45 @@ class MainWindow:
         frame.columnconfigure(1, weight=1)
 
         fields = [
+            ("产品种类：", 'product_type'),
             ("生产企业：", 'manufacturer_edit'),
             ("生产许可证编号：", 'license_number'),
-            ("产品种类：", 'product_type'),
             ("规格型号：", 'type_box'),
             ("净质量：", 'weight_box'),
             ("生产日期：", 'production_date'),
             ("生产批号：", 'batch_number'),
-            ("袋/箱号：", 'package_number'),
-            ("信息代码：", 'production_line_code', True),
+            ("生产袋/箱号：", 'package_number'),
+            ("生产线信息代码：", 'production_line_code'),
         ]
         for i, f in enumerate(fields):
             label, attr = f[0], f[1]
-            readonly = f[2] if len(f) > 2 else False
-            self._grid_row_full(frame, i, label, attr, readonly=readonly)
+            self._grid_row_full(frame, i, label, attr, readonly=True)
 
         ri = len(fields)
         pkg_frame = self._labelframe(frame, "包装方式")
         pkg_frame.grid(row=ri, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
         pkg_inner = tk.Frame(pkg_frame, bg='white')
         pkg_inner.pack(fill='x', padx=10, pady=4)
+        pkg_inner.columnconfigure(0, weight=1)
+        pkg_inner.columnconfigure(1, weight=1)
         self.pkg_var = tk.StringVar(value="bag")
         tk.Radiobutton(pkg_inner, text="箱  装", variable=self.pkg_var, value="box",
-                       font=("Microsoft YaHei", 10), bg='white').pack(side='left', padx=10)
+                       font=("Microsoft YaHei", 10), bg='white').grid(row=0, column=0, padx=10)
         tk.Radiobutton(pkg_inner, text="袋  装", variable=self.pkg_var, value="bag",
-                       font=("Microsoft YaHei", 10), bg='white').pack(side='left', padx=10)
+                       font=("Microsoft YaHei", 10), bg='white').grid(row=0, column=1, padx=10)
 
         ri += 1
         state_frame = self._labelframe(frame, "生产状态")
         state_frame.grid(row=ri, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
         state_inner = tk.Frame(state_frame, bg='white')
         state_inner.pack(fill='x', padx=10, pady=4)
+        state_inner.columnconfigure(0, weight=1)
+        state_inner.columnconfigure(1, weight=1)
         self.state_var = tk.StringVar(value="idle")
         tk.Radiobutton(state_inner, text="产 品 进 入", variable=self.state_var, value="cargo_in",
-                       font=("Microsoft YaHei", 10), bg='white', state='disabled').pack(side='left', padx=10)
+                       font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=0, padx=10)
         tk.Radiobutton(state_inner, text="产 品 通 过", variable=self.state_var, value="cargo_out",
-                       font=("Microsoft YaHei", 10), bg='white', state='disabled').pack(side='left', padx=10)
+                       font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=1, padx=10)
 
         self.production_date.insert(0, datetime.now().strftime("%Y%m%d"))
 
