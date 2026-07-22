@@ -15,6 +15,8 @@ from serial_comm import SerialComm
 from barcode_scanner import BarCodeScanner
 from TcpSocketServer import TcpSocketServer
 from RFIDReader_SFM2200 import RFIDReader_SFM2200
+from product_info_def import (get_product_name, get_manufacturer_name,
+                               get_license_number, get_package_name)
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
@@ -153,7 +155,7 @@ class MainWindow:
 
         fields = [
             ("生产企业：", 'manufacturer_edit'),
-            ("生产许可证编号：", 'license_number', True),
+            ("生产许可证编号：", 'license_number'),
             ("产品种类：", 'product_type'),
             ("规格型号：", 'type_box'),
             ("净质量：", 'weight_box'),
@@ -334,8 +336,74 @@ class MainWindow:
     #  parse_product_info 预留
     # ===================================================================
     def parse_product_info(self, data: bytes):
-        """解析写入数据并填写生产线信息（预留，待实现）"""
+        """解析20字节编码数据并填写生产线信息"""
         self.log(f"parse_product_info 收到数据 ({len(data)}字节): {data.hex().upper()}", "DEBUG")
+        if len(data) < 20:
+            self.log(f"parse_product_info 数据长度不足: {len(data)}", "WARN")
+            return
+
+        # 编码规则（0-based，共20字节）：
+        # 0:     0x00 (字对齐填充)
+        # 1-3:   产品种类代码 ASCII (3字节)
+        # 4-5:   生产企业代码 ASCII (2字节)
+        # 6-7:   生产许可证编号 hex (2字节)
+        # 8-9:   规格型号 hex (2字节)
+        # 10:    包装方式 ASCII (1字节)
+        # 11-12: 净质量 hex (2字节)
+        # 13:    生产日期-年 hex
+        # 14:    生产日期-月 hex
+        # 15:    生产日期-日 hex
+        # 16-17: 生产批号 hex (2字节)
+        # 18-19: 袋/箱号 hex (2字节)
+
+        # 产品种类代码 (bytes 1-3)
+        product_code = data[1:4].decode('ascii', errors='replace')
+        product_name = get_product_name(product_code)
+        self._set_editable_entry('product_type', product_name)
+
+        # 生产企业代码 (bytes 4-5)
+        manu_code = data[4:6].decode('ascii', errors='replace')
+        manu_name = get_manufacturer_name(manu_code)
+        self._set_editable_entry('manufacturer_edit', manu_name)
+
+        # 生产许可证编号 (bytes 6-7, big-endian)
+        license_num = int.from_bytes(data[6:8], 'big')
+        self._set_editable_entry('license_number', f"{license_num:04d}")
+
+        # 规格型号 (bytes 8-9, big-endian)
+        spec_val = int.from_bytes(data[8:10], 'big')
+        self._set_editable_entry('type_box', f"{spec_val}")
+
+        # 包装方式 (byte 10)
+        pkg_byte = data[10]
+        pkg_name = get_package_name(pkg_byte)
+        if pkg_name == "袋装":
+            self.pkg_var.set("bag")
+        else:
+            self.pkg_var.set("box")
+
+        # 净质量 (bytes 11-12, big-endian)
+        weight_val = int.from_bytes(data[11:13], 'big')
+        self._set_editable_entry('weight_box', f"{weight_val}")
+
+        # 生产日期 (bytes 13-15: yy, mm, dd)
+        yy = data[13]
+        mm = data[14]
+        dd = data[15]
+        self._set_editable_entry('production_date', f"{yy:02d}{mm:02d}{dd:02d}")
+
+        # 生产批号 (bytes 16-17, big-endian)
+        batch_val = int.from_bytes(data[16:18], 'big')
+        self._set_editable_entry('batch_number', f"{batch_val:04d}")
+
+        # 袋/箱号 (bytes 18-19, big-endian)
+        box_val = int.from_bytes(data[18:20], 'big')
+        self._set_editable_entry('package_number', f"{box_val:04d}")
+
+        # 信息代码
+        self._set_editable_entry('production_line_code', data.hex().upper())
+
+        self.log(f"产品信息已解析: 产品={product_name}, 企业={manu_name}, 日期=20{yy:02d}-{mm:02d}-{dd:02d}", "INFO")
 
     # ===================================================================
     #  网络 / MQTT / 串口 启动
