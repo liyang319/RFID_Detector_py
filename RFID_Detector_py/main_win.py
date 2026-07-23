@@ -1232,12 +1232,29 @@ class MainWindow:
         if not self.write_done and not self.write_in_progress:
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=False))
 
+    def on_cmd_beidou_info(self, beidou_id: str, beidou_time: str, beidou_location: str):
+        """处理北斗信息指令，填入北斗信息区域"""
+        self.log(f"北斗信息: id={beidou_id} time={beidou_time} location={beidou_location}", "INFO")
+        self.root.after(0, lambda: self.update_beidou_id(beidou_id))
+        self.root.after(0, lambda: self.update_beidou_time(beidou_time))
+        self.root.after(0, lambda: self.update_beidou_location(beidou_location))
+
+    def update_beidou_id(self, text: str):
+        self._set_entry('beidou_id', text)
+
+    def update_beidou_time(self, text: str):
+        self._set_entry('beidou_time', text)
+
+    def update_beidou_location(self, text: str):
+        self._set_entry('beidou_location', text)
+
     def on_tcp_message(self, data: bytes, addr):
         """
         收到 TCP 客户端消息时的回调（新）
         支持指令格式:
           {"type": "write_epc",   "epc": [...]}
           {"type": "write_user",  "user_data": [...]}
+          {"cmd":  "beidou_info", "id": "...", "time": "...", "location": "..."}
         :param data: 原始字节数据
         :param addr: 客户端地址 (ip, port)
         """
@@ -1278,6 +1295,12 @@ class MainWindow:
                 return
             user_data = bytes(user_list)
             self.on_cmd_write_user(user_data)
+
+        elif json_data.get("cmd") == "beidou_info":
+            beidou_id = json_data.get("id", "")
+            beidou_time = json_data.get("time", "")
+            beidou_location = json_data.get("location", "")
+            self.on_cmd_beidou_info(beidou_id, beidou_time, beidou_location)
 
         else:
             self.add_message(f"TCP 收到未知指令类型: {cmd_type}")
