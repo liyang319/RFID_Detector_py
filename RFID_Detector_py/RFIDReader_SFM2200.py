@@ -216,6 +216,31 @@ class RFIDReader_SFM2200:
         self.receive_response(timeout=3)
         return True
 
+    def check_enabled_antenna(self):
+        """查询已使能的天线，返回天线名称列表，如 ['ant1', 'ant2']"""
+        print("调用 RFIDReader_SFM2200.check_enabled_antenna()")
+        self.clear_response_queue()
+        cmd = bytes([0xFF, 0x01, 0x61, 0x05, 0xBD, 0xB8])
+        self.send_command(cmd)
+        response = self.receive_response(timeout=3)
+        if not response or len(response) < 15:
+            print(f"check_enabled_antenna 响应数据无效: {response.hex() if response else '空'}")
+            return []
+
+        # 响应格式: FF 09 61 00 00 05 [ant_id1] [enabled1] [ant_id2] [enabled2] ...
+        # ant_id: 0x01=ant1, 0x02=ant2, 0x03=ant3, 0x04=ant4
+        # enabled: 0x01=使能, 0x00=禁用
+        ant_map = {0x01: 'ant1', 0x02: 'ant2', 0x03: 'ant3', 0x04: 'ant4'}
+        enabled = []
+        for i in range(6, len(response) - 1, 2):
+            ant_id = response[i]
+            ant_enabled = response[i + 1]
+            print(f"天线ID: {ant_id}, 使能状态: {ant_enabled}")
+            if ant_id in ant_map and ant_enabled == 0x01:
+                enabled.append(ant_map[ant_id])
+        print(f"使能天线: {enabled}")
+        return enabled
+
     def startloop(self):
         print("调用 RFIDReader_SFM2200.startloop()")
         self.clear_response_queue()

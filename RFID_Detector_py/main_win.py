@@ -272,8 +272,15 @@ class MainWindow:
     def on_read_rfid_params(self):
         """读取RFID参数"""
         self.log("读取RFID参数", "INFO")
+        enabled = self.rfid_reader_serial.check_enabled_antenna()
+        if enabled:
+            antenna_text = ', '.join(enabled)
+            self._set_editable_entry('antenna_edit', antenna_text)
+            self.log(f"使能天线: {antenna_text}", "INFO")
+        else:
+            self.log("未检测到使能天线", "WARN")
         params = self.get_rfid_params()
-        self.log(f"天线={params['antenna']} 功率={params['power']} 频点={params['frequency']}", "INFO")
+        self.log(f"功率={params['power']} 频点={params['frequency']}", "INFO")
 
     def on_set_rfid_params(self):
         """设置RFID参数"""
