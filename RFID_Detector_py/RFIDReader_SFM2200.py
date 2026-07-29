@@ -241,6 +241,30 @@ class RFIDReader_SFM2200:
         print(f"使能天线: {enabled}")
         return enabled
 
+    def get_antenna_power(self):
+        """查询天线读写功率，返回 {'ant1': {'read': 3300, 'write': 3300}, ...}"""
+        print("调用 RFIDReader_SFM2200.get_antenna_power()")
+        self.clear_response_queue()
+        cmd = bytes([0xFF, 0x01, 0x61, 0x03, 0xBD, 0xBE])
+        self.send_command(cmd)
+        response = self.receive_response(timeout=3)
+        if not response or len(response) < 27:
+            print(f"get_antenna_power 响应数据无效: {response.hex() if response else '空'}")
+            return {}
+
+        # 响应格式: FF 15 61 00 00 03 [ant_id 1B][read_pwr 2B][write_pwr 2B] ×4 [CRC 2B]
+        ant_map = {0x01: 'ant1', 0x02: 'ant2', 0x03: 'ant3', 0x04: 'ant4'}
+        result = {}
+        for i in range(6, len(response) - 2, 5):
+            ant_id = response[i]
+            if ant_id not in ant_map:
+                continue
+            read_pwr = int.from_bytes(response[i + 1:i + 3], 'big')
+            write_pwr = int.from_bytes(response[i + 3:i + 5], 'big')
+            result[ant_map[ant_id]] = {'read': read_pwr, 'write': write_pwr}
+        print(f"天线功率: {result}")
+        return result
+
     def startloop(self):
         print("调用 RFIDReader_SFM2200.startloop()")
         self.clear_response_queue()

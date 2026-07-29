@@ -242,13 +242,13 @@ class MainWindow:
         frame.pack(fill='x', pady=(0, 10))
         frame.columnconfigure(0, weight=0)
         frame.columnconfigure(1, weight=1)
-        for i, (label, attr) in enumerate([("天线号：", 'antenna_edit'), ("功率(dBm)：", 'power_edit'), ("频点：", 'frequency_edit')]):
+        for i, (label, attr) in enumerate([("天线号：", 'antenna_edit'), ("读功率(dBm)：", 'read_power_edit'), ("写功率(dBm)：", 'write_power_edit'), ("频点：", 'frequency_edit')]):
             self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=4)
             e = self._entry(frame)
             e.grid(row=i, column=1, sticky='ew', padx=(0, 10), pady=4)
             setattr(self, attr, e)
         btn_outer = self._labelframe(frame, "控制按钮")
-        btn_outer.grid(row=3, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
+        btn_outer.grid(row=4, column=0, columnspan=2, sticky='ew', padx=10, pady=4)
         btn_frame = tk.Frame(btn_outer, bg='white')
         btn_frame.pack(fill='x', padx=10, pady=4)
         style = ttk.Style()
@@ -272,6 +272,7 @@ class MainWindow:
     def on_read_rfid_params(self):
         """读取RFID参数"""
         self.log("读取RFID参数", "INFO")
+        # 查询使能天线
         enabled = self.rfid_reader_serial.check_enabled_antenna()
         if enabled:
             antenna_text = ', '.join(enabled)
@@ -279,8 +280,20 @@ class MainWindow:
             self.log(f"使能天线: {antenna_text}", "INFO")
         else:
             self.log("未检测到使能天线", "WARN")
-        params = self.get_rfid_params()
-        self.log(f"功率={params['power']} 频点={params['frequency']}", "INFO")
+            return
+
+        # 查询天线功率
+        powers = self.rfid_reader_serial.get_antenna_power()
+        if powers:
+            read_pwrs = []
+            write_pwrs = []
+            for ant in enabled:
+                if ant in powers:
+                    read_pwrs.append(str(powers[ant]['read']))
+                    write_pwrs.append(str(powers[ant]['write']))
+            self._set_editable_entry('read_power_edit', ', '.join(read_pwrs))
+            self._set_editable_entry('write_power_edit', ', '.join(write_pwrs))
+            self.log(f"读功率: {', '.join(read_pwrs)} 写功率: {', '.join(write_pwrs)}", "INFO")
 
     def on_set_rfid_params(self):
         """设置RFID参数"""
