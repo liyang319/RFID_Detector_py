@@ -265,6 +265,48 @@ class RFIDReader_SFM2200:
         print(f"天线功率: {result}")
         return result
 
+    def set_antenna_power(self, ants, read_powers, write_powers):
+        """设置天线读写功率
+        :param ants: 天线名称列表，如 ['ant1', 'ant2']
+        :param read_powers: 读功率列表，如 [3300, 3300]
+        :param write_powers: 写功率列表，如 [3300, 3300]
+        :return: 是否设置成功
+        """
+        print(f"调用 RFIDReader_SFM2200.set_antenna_power(ants={ants}, read={read_powers}, write={write_powers})")
+        n = len(ants)
+        if len(read_powers) != n or len(write_powers) != n:
+            print(f"参数错误：天线数组长度不一致 ants={n} read={len(read_powers)} write={len(write_powers)}")
+            return False
+
+        ant_map = {'ant1': 0x01, 'ant2': 0x02, 'ant3': 0x03, 'ant4': 0x04}
+
+        # 构建数据: FF [data_len] 91 [data(03 + 每根天线5字节)]
+        data = bytes([0x03])  # 子功能码
+        for ant_name, rpwr, wpwr in zip(ants, read_powers, write_powers):
+            data += bytes([ant_map[ant_name]])
+            data += rpwr.to_bytes(2, 'big')
+            data += wpwr.to_bytes(2, 'big')
+
+        cmd = bytes([0xFF, len(data), 0x91]) + data
+        cmd_with_crc = self.get_cmd_append_crc(cmd, little_endian=False)
+
+        self.clear_response_queue()
+        if not self.send_command(cmd_with_crc):
+            print("发送指令失败")
+            return False
+
+        response = self.receive_response(timeout=3)
+        if not response or len(response) < 3:
+            print(f"响应数据无效: {response.hex() if response else '空'}")
+            return False
+
+        success = (response[0] == 0xFF and response[1] == 0x00 and response[2] == 0x91)
+        if success:
+            print("设置天线功率成功")
+        else:
+            print(f"设置天线功率失败，响应: {response.hex().upper()}")
+        return success
+
     def startloop(self):
         print("调用 RFIDReader_SFM2200.startloop()")
         self.clear_response_queue()

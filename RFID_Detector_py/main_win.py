@@ -298,7 +298,16 @@ class MainWindow:
     def on_set_rfid_params(self):
         """设置RFID参数"""
         params = self.get_rfid_params()
-        self.log(f"设置RFID参数: 天线={params['antenna']} 功率={params['power']} 频点={params['frequency']}", "INFO")
+        self.log(f"设置RFID参数: 天线={params['antenna']} 读功率={params['read_power']} 写功率={params['write_power']} 频点={params['frequency']}", "INFO")
+
+        # 解析天线列表和功率值
+        ants = [a.strip() for a in params['antenna'].split(',') if a.strip()]
+        read_pwrs = [int(p.strip()) for p in params['read_power'].split(',') if p.strip() and p.strip().isdigit()]
+        write_pwrs = [int(p.strip()) for p in params['write_power'].split(',') if p.strip() and p.strip().isdigit()]
+
+        if ants and read_pwrs and write_pwrs:
+            success = self.rfid_reader_serial.set_antenna_power(ants, read_pwrs, write_pwrs)
+            self.log(f"天线功率设置{'成功' if success else '失败'}", "INFO" if success else "ERROR")
 
     def on_reset_rfid(self):
         """重启RFID"""
@@ -355,7 +364,11 @@ class MainWindow:
     def update_tid(self, text): self._set_entry('tid_edit', text.replace(' ', ''))
     def update_epc(self, text): self._set_entry('epc_edit', text.replace(' ', ''))
     def update_pending_code(self, text): self._set_entry('pending_code_edit', text.replace(' ', ''))
-    def get_rfid_params(self): return {'antenna': self.antenna_edit.get(), 'power': self.power_edit.get(), 'frequency': self.frequency_edit.get()}
+    def get_rfid_params(self):
+        return {'antenna': self.antenna_edit.get(),
+                'read_power': self.read_power_edit.get(),
+                'write_power': self.write_power_edit.get(),
+                'frequency': self.frequency_edit.get()}
 
     # ===================================================================
     #  parse_product_info 预留
