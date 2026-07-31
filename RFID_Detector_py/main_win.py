@@ -276,7 +276,8 @@ class MainWindow:
         enabled = self.rfid_reader_serial.check_enabled_antenna()
         if enabled:
             antenna_text = ', '.join(enabled)
-            self._set_editable_entry('antenna_edit', antenna_text)
+            self.antenna_edit.delete(0, 'end')
+            self.antenna_edit.insert(0, antenna_text)
             self.log(f"使能天线: {antenna_text}", "INFO")
         else:
             self.log("未检测到使能天线", "WARN")
@@ -291,8 +292,10 @@ class MainWindow:
                 if ant in powers:
                     read_pwrs.append(str(powers[ant]['read']))
                     write_pwrs.append(str(powers[ant]['write']))
-            self._set_editable_entry('read_power_edit', ', '.join(read_pwrs))
-            self._set_editable_entry('write_power_edit', ', '.join(write_pwrs))
+            self.read_power_edit.delete(0, 'end')
+            self.read_power_edit.insert(0, ', '.join(read_pwrs))
+            self.write_power_edit.delete(0, 'end')
+            self.write_power_edit.insert(0, ', '.join(write_pwrs))
             self.log(f"读功率: {', '.join(read_pwrs)} 写功率: {', '.join(write_pwrs)}", "INFO")
 
     def on_set_rfid_params(self):
