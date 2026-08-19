@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 import time
+import queue
 from datetime import datetime
 
 from RFIDReader_SFM2200 import RFIDReader_SFM2200
@@ -37,8 +38,12 @@ class TestApp:
         self.test_start_time = None
         self.test_duration = 60  # 默认60秒
 
+        # 线程安全的UI更新队列
+        self.ui_queue = queue.Queue()
+
         self.build_ui()
         self.update_runtime()
+        self._poll_ui_queue()
 
     # ========== UI 构建 ==========
     def build_ui(self):
@@ -187,8 +192,8 @@ class TestApp:
 
         def connect():
             if self.reader.open():
-                self.reader.start_firmware()
                 self.reader.start_receive_loop()
+                self.reader.start_firmware()
                 self.root.after(0, lambda: self.log(f"连接成功: {port}", "info"))
                 self.root.after(0, lambda: self.connect_btn.config(text="已连接", bg='#4CAF50'))
             else:
@@ -210,12 +215,12 @@ class TestApp:
                 break
 
     def _try_parse_tid_user(self, buf):
-        hdr = bytes([0xFF, 0x47, 0xAA])
+        hdr = bytes([0xFF, 0x3B, 0xAA])
         hl = len(hdr)
         fi = -1
         for i in range(len(buf) - hl + 1):
             if buf[i] == 0xFF and buf[i + 2] == 0xAA:
-                if buf[i + 1] == 0x47:
+                if buf[i + 1] == 0x3B:
                     fi = i
                     break
         if fi == -1:
@@ -227,7 +232,7 @@ class TestApp:
             return None, fi
         si = -1
         for i in range(fi + hl, len(buf) - hl + 1):
-            if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x47:
+            if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x3B:
                 si = i
                 break
         if si == -1:
@@ -237,12 +242,17 @@ class TestApp:
         return (tag, si) if tag else (None, hl)
 
     def _parse_tid_user(self, data):
-        if len(data) < 74:
+        if len(data) < 54:
+            return None
+        # EPC长度可变：第51字节为EPC长度(含4字节附加)，实际EPC = epc_len - 4
+        epc_len = data[51]
+        real_epc_len = epc_len - 4
+        if real_epc_len <= 0 or len(data) < 54 + real_epc_len:
             return None
         return {
             'tid': ' '.join(f'{b:02X}' for b in data[15:31]),
             'user_data': ' '.join(f'{b:02X}' for b in data[31:51]),
-            'epc': ''.join(f'{b:02X}' for b in data[54:74]),
+            'epc': ''.join(f'{b:02X}' for b in data[54:54 + real_epc_len]),
         }
 
     def _handle_parsed_tag(self, tag):
@@ -252,14 +262,22 @@ class TestApp:
         self.read_count += 1
         if tag['epc']:
             self.tag_epc_set.add(tag['epc'])
+        # 放入队列，由主线程轮询更新UI
+        self.ui_queue.put(tag)
 
-        def update_ui():
-            self.tid_label.config(text=tag['tid'])
-            self.epc_label.config(text=tag['epc'])
-            self.userdata_label.config(text=tag['user_data'])
-            self.tag_count_label.config(text=str(len(self.tag_epc_set)))
-            self.read_count_label.config(text=str(self.read_count))
-        self.root.after(0, update_ui)
+    def _poll_ui_queue(self):
+        """主线程轮询队列，更新UI"""
+        try:
+            while True:
+                tag = self.ui_queue.get_nowait()
+                self.tid_label.config(text=tag['tid'])
+                self.epc_label.config(text=tag['epc'])
+                self.userdata_label.config(text=tag['user_data'])
+                self.tag_count_label.config(text=str(len(self.tag_epc_set)))
+                self.read_count_label.config(text=str(self.read_count))
+        except queue.Empty:
+            pass
+        self.root.after(50, self._poll_ui_queue)
 
     # ========== 读操作测试 ==========
     def on_start_read(self):
