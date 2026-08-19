@@ -215,12 +215,12 @@ class TestApp:
                 break
 
     def _try_parse_tid_user(self, buf):
-        hdr = bytes([0xFF, 0x3B, 0xAA])
+        hdr = bytes([0xFF, 0x47, 0xAA])
         hl = len(hdr)
         fi = -1
         for i in range(len(buf) - hl + 1):
             if buf[i] == 0xFF and buf[i + 2] == 0xAA:
-                if buf[i + 1] == 0x3B:
+                if buf[i + 1] == 0x47:
                     fi = i
                     break
         if fi == -1:
@@ -232,7 +232,7 @@ class TestApp:
             return None, fi
         si = -1
         for i in range(fi + hl, len(buf) - hl + 1):
-            if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x3B:
+            if buf[i] == 0xFF and buf[i + 2] == 0xAA and buf[i + 1] == 0x47:
                 si = i
                 break
         if si == -1:
@@ -242,17 +242,12 @@ class TestApp:
         return (tag, si) if tag else (None, hl)
 
     def _parse_tid_user(self, data):
-        if len(data) < 54:
-            return None
-        # EPC长度可变：第51字节为EPC长度(含4字节附加)，实际EPC = epc_len - 4
-        epc_len = data[51]
-        real_epc_len = epc_len - 4
-        if real_epc_len <= 0 or len(data) < 54 + real_epc_len:
+        if len(data) < 74:
             return None
         return {
             'tid': ' '.join(f'{b:02X}' for b in data[15:31]),
             'user_data': ' '.join(f'{b:02X}' for b in data[31:51]),
-            'epc': ''.join(f'{b:02X}' for b in data[54:54 + real_epc_len]),
+            'epc': ''.join(f'{b:02X}' for b in data[54:74]),
         }
 
     def _handle_parsed_tag(self, tag):
