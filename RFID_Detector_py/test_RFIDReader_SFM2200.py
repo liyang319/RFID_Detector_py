@@ -197,12 +197,14 @@ class TestApp:
 
     # ========== 标签数据回调 ==========
     def on_tag_data(self, data: bytes):
+        print(f"[test] 收到标签数据 {len(data)} 字节: {data.hex().upper()}")
         self.tag_buffer.extend(data)
         while True:
             tag, consumed = self._try_parse_tid_user(self.tag_buffer)
             if consumed > 0:
                 self.tag_buffer = self.tag_buffer[consumed:]
                 if tag is not None:
+                    print(f"[test] 解析成功 TID={tag['tid']} EPC={tag['epc']}")
                     self._handle_parsed_tag(tag)
             else:
                 break
@@ -262,17 +264,31 @@ class TestApp:
     # ========== 读操作测试 ==========
     def on_start_read(self):
         if self.test_running:
-            self.log("测试已在运行中", "warn")
+            # 停止读操作
+            self._stop_read()
             return
         self._parse_duration()
         self.log(f"启动读操作测试，时长 {self.test_duration} 秒", "info")
         self.reader.startloop_tid_user()
-        self._start_test_timer()
+        self.test_running = True
+        self.test_start_time = time.time()
+        self.read_start_btn.config(text="停止读操作")
+        self._start_timer_check("读操作")
+
+    def _stop_read(self):
+        self.test_running = False
+        self.reader.stoploop()
+        self.read_start_btn.config(text="启动读操作测试")
+        self._output_report("读操作")
 
     # ========== 写操作测试 ==========
     def on_start_write(self):
         if self.test_running:
-            self.log("测试已在运行中", "warn")
+            # 停止写操作
+            self.test_running = False
+            self.reader.stoploop()
+            self.write_start_btn.config(text="启动写操作测试")
+            self._output_report("写操作")
             return
         self._parse_duration()
 
@@ -317,6 +333,7 @@ class TestApp:
 
         self.test_running = True
         self.test_start_time = time.time()
+        self.write_start_btn.config(text="停止写操作")
         self.test_thread = threading.Thread(target=write_loop, daemon=True)
         self.test_thread.start()
         self._start_timer_check("写操作")
@@ -330,16 +347,14 @@ class TestApp:
         if self.test_duration <= 0:
             self.test_duration = 60
 
-    def _start_test_timer(self):
-        self.test_running = True
-        self.test_start_time = time.time()
-
     def _start_timer_check(self, mode):
         def check():
             while self.test_running:
                 if time.time() - self.test_start_time >= self.test_duration:
                     self.test_running = False
                     self.reader.stoploop()
+                    self.root.after(0, lambda: self.read_start_btn.config(text="启动读操作测试"))
+                    self.root.after(0, lambda: self.write_start_btn.config(text="启动写操作测试"))
                     self._output_report(mode)
                     break
                 time.sleep(0.1)
