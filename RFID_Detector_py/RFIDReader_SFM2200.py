@@ -181,8 +181,9 @@ class RFIDReader_SFM2200:
                 time.sleep(0.5)
 
     def _receive_loop_tid_user(self):
-        """TID+USER格式接收循环，直接透传标签数据到回调，由上层解析"""
+        """TID+USER格式接收循环，缓冲数据并正确分发标签数据和指令响应"""
         print("进入 RFID 读写器接收循环（TID+USER格式）")
+        buffer = bytearray()
         while self.running:
             try:
                 data = self.serial_port.read(1024)
@@ -190,18 +191,34 @@ class RFIDReader_SFM2200:
                     time.sleep(0.05)
                     continue
 
-                # 判断是否为标签上报数据（FF XX AA）
-                if self._is_tag_report(data):
-                    # 直接透传标签数据到回调，由 main.py 的 _try_parse_one_packet_tid_user 处理
-                    if self.callback:
-                        self.callback(data)
-                else:
-                    # 非标签上报数据（指令响应），直接放入响应队列
-                    self.response_queue.put(data)
+                buffer.extend(data)
 
                 # 可选：打印接收到的原始数据（避免刷屏可注释）
                 hex_str = ' '.join(f'{b:02X}' for b in data)
                 print(f"RFID收到数据: {hex_str}")
+
+                # 处理缓冲区：标签数据（FF xx AA）透传给回调，指令响应放入响应队列
+                while len(buffer) >= 3:
+                    if buffer[0] != 0xFF:
+                        # 数据块从包中间开始（残留数据），丢弃直到找到 FF
+                        idx = buffer.find(b'\xFF')
+                        if idx == -1:
+                            buffer.clear()
+                            break
+                        del buffer[:idx]
+                        continue
+
+                    if self._is_tag_report(buffer):
+                        # 标签上报数据：透传给回调，由上层解析
+                        if self.callback:
+                            self.callback(bytes(buffer))
+                        buffer.clear()
+                        break
+                    else:
+                        # 指令响应：放入响应队列
+                        self.response_queue.put(bytes(buffer))
+                        buffer.clear()
+                        break
 
             except Exception as e:
                 print(f"RFID读写器接收循环错误: {e}")

@@ -270,6 +270,7 @@ class TestApp:
                 self.userdata_label.config(text=tag['user_data'])
                 self.tag_count_label.config(text=str(len(self.tag_epc_set)))
                 self.read_count_label.config(text=str(self.read_count))
+                self.log(f"解析成功 TID={tag['tid']} EPC={tag['epc']}", "debug")
         except queue.Empty:
             pass
         self.root.after(50, self._poll_ui_queue)
@@ -281,6 +282,19 @@ class TestApp:
             self._stop_read()
             return
         self._parse_duration()
+
+        # 清零识别数量和标签数量
+        self.read_count = 0
+        self.tag_epc_set.clear()
+        self.current_tid = ""
+        self.current_epc = ""
+        self.current_userdata = ""
+        self.tid_label.config(text="")
+        self.epc_label.config(text="")
+        self.userdata_label.config(text="")
+        self.read_count_label.config(text="0")
+        self.tag_count_label.config(text="0")
+
         self.log(f"启动读操作测试，时长 {self.test_duration} 秒", "info")
         self.reader.startloop_tid_user()
         self.test_running = True
