@@ -1,5 +1,6 @@
 # RFIDReader_SFM2200.py
 import serial
+import socket
 import threading
 import time
 import queue
@@ -7,11 +8,24 @@ from datetime import datetime
 
 
 class RFIDReader_SFM2200:
-    def __init__(self, port='/dev/ttyUSB0', baudrate=115200, timeout=1.0):
+    def __init__(self, port='/dev/ttyUSB0', baudrate=115200, timeout=1.0,
+                 transport='serial', host='192.168.1.100', tcp_port=8080):
+        """
+        :param transport: 传输方式 'serial'=串口, 'tcp'=网口(作为客户端连接RFID设备的TCP Server)
+        :param port: 串口设备路径（transport='serial'时使用）
+        :param baudrate: 串口波特率
+        :param host: RFID设备IP地址（transport='tcp'时使用）
+        :param tcp_port: RFID设备端口号（transport='tcp'时使用）
+        """
+        self.transport = transport
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
-        self.serial_port = None
+        self.host = host
+        self.tcp_port = tcp_port
+        self.serial_port = None      # 串口对象（transport='serial'时使用）
+        self.socket = None          # socket对象（transport='tcp'时使用）
+        self._tcp_connected = False # TCP连接状态
         self.running = False
         self.receive_thread = None
         self.callback = None
@@ -19,26 +33,66 @@ class RFIDReader_SFM2200:
         self.response_queue = queue.Queue(maxsize=100)
         self.write_callback = None
 
-    # -------------------- 基础串口操作 --------------------
+    # -------------------- 底层传输读写（串口/网口统一） --------------------
+    def _write(self, data: bytes):
+        """统一写接口：根据传输方式分派到串口或socket"""
+        if self.transport == 'tcp':
+            self.socket.sendall(data)
+        else:
+            self.serial_port.write(data)
+
+    def _read(self, n: int) -> bytes:
+        """统一读接口：根据传输方式分派到串口或socket"""
+        if self.transport == 'tcp':
+            try:
+                return self.socket.recv(n)
+            except (socket.timeout, TimeoutError):
+                return b''
+            except OSError:
+                return b''
+        else:
+            return self.serial_port.read(n)
+
+    # -------------------- 基础连接操作 --------------------
     def open(self):
         try:
-            self.serial_port = serial.Serial(
-                port=self.port,
-                baudrate=self.baudrate,
-                timeout=self.timeout
-            )
-            print(f"RFID读写器串口 {self.port} 已打开，波特率: {self.baudrate}")
+            if self.transport == 'tcp':
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.socket.settimeout(self.timeout)
+                self.socket.connect((self.host, self.tcp_port))
+                self._tcp_connected = True
+                print(f"RFID读写器网口 {self.host}:{self.tcp_port} 已连接")
+            else:
+                self.serial_port = serial.Serial(
+                    port=self.port,
+                    baudrate=self.baudrate,
+                    timeout=self.timeout
+                )
+                print(f"RFID读写器串口 {self.port} 已打开，波特率: {self.baudrate}")
             return True
         except Exception as e:
-            print(f"打开RFID读写器串口失败: {e}")
+            self._tcp_connected = False
+            print(f"打开RFID读写器失败: {e}")
             return False
 
     def close(self):
-        if self.serial_port and self.serial_port.is_open:
-            self.serial_port.close()
-            print(f"RFID读写器串口 {self.port} 已关闭")
+        if self.transport == 'tcp':
+            if self.socket:
+                try:
+                    self.socket.close()
+                except Exception:
+                    pass
+                self.socket = None
+            self._tcp_connected = False
+            print(f"RFID读写器网口 {self.host}:{self.tcp_port} 已断开")
+        else:
+            if self.serial_port and self.serial_port.is_open:
+                self.serial_port.close()
+                print(f"RFID读写器串口 {self.port} 已关闭")
 
     def is_open(self):
+        if self.transport == 'tcp':
+            return self._tcp_connected and self.socket is not None
         return self.serial_port and self.serial_port.is_open
 
     def send_command(self, data: bytes) -> bool:
@@ -46,7 +100,7 @@ class RFIDReader_SFM2200:
             print("RFID读写器未打开，无法发送指令")
             return False
         try:
-            self.serial_port.write(data)
+            self._write(data)
             hex_str = ' '.join(f'{b:02X}' for b in data)
             print(f"发送指令: {hex_str}")
             return True
@@ -134,7 +188,7 @@ class RFIDReader_SFM2200:
 
         while self.running:
             try:
-                data = self.serial_port.read(1024)
+                data = self._read(1024)
                 if not data:
                     time.sleep(0.05)
                     continue
@@ -186,7 +240,7 @@ class RFIDReader_SFM2200:
         buffer = bytearray()
         while self.running:
             try:
-                data = self.serial_port.read(1024)
+                data = self._read(1024)
                 if not data:
                     time.sleep(0.05)
                     continue
