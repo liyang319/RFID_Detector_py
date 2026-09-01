@@ -68,6 +68,7 @@ class MainWindow:
         self.actual_write_data = None
         self.write_done = False
         self.write_in_progress = False
+        self.write_result = ""  # 写标签结果: "success" / "fail"
         self.b_write_epc = False
         self.current_tag = None
         self.tag_history = []
@@ -953,6 +954,7 @@ class MainWindow:
             self.tag_history.clear()
             self.write_done = False
             self.write_in_progress = False
+            self.write_result = ""
         else:
             # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
@@ -1196,7 +1198,7 @@ class MainWindow:
     # ===================================================================
     def _execute_fixed_write(self, b_write_epc=False):
         """
-        同步执行写标签，优先使用TCP下发的数据，写成功后启动验证读取。
+        同步执行写标签，优先使用TCP下发的数据，写成功后记录结果。
         :param b_write_epc: True=写EPC, False=写USER_DATA
         """
         self.write_in_progress = True
@@ -1204,7 +1206,7 @@ class MainWindow:
 
         # 优先使用TCP下发的数据，否则使用固定默认数据
         write_data = self.pending_write_data if self.pending_write_data else self.FIXED_DEFAULT_DATA
-        self.actual_write_data = write_data  # 记录实际写入的数据，用于后续校验
+        self.actual_write_data = write_data  # 记录实际写入的数据
         data_hex = ' '.join(f'{b:02X}' for b in write_data)
         source = "TCP下发" if self.pending_write_data else "默认"
         write_type = "EPC" if b_write_epc else "USER_DATA"
@@ -1216,8 +1218,8 @@ class MainWindow:
         if success:
             self.write_done = True
             self.write_in_progress = False
-            self.add_message(f"写标签{write_type}成功，启动验证读取...")
-            self.rfid_reader_serial.startloop_tid_user()
+            self.write_result = "success"
+            self.add_message(f"写标签{write_type}成功")
             return True
         else:
             self.log(f"写标签{write_type}失败，重试中...", "WARN")
@@ -1225,14 +1227,14 @@ class MainWindow:
             if success:
                 self.write_done = True
                 self.write_in_progress = False
-                self.add_message(f"重试写标签{write_type}成功，启动验证读取...")
-                self.rfid_reader_serial.startloop_tid_user()
+                self.write_result = "success"
+                self.add_message(f"重试写标签{write_type}成功")
                 return True
             else:
                 self.write_done = False
                 self.write_in_progress = False
-                self.log(f"写标签{write_type}失败（已重试），读取原始标签...", "ERROR")
-                self.rfid_reader_serial.startloop_tid_user()
+                self.write_result = "fail"
+                self.log(f"写标签{write_type}失败（已重试）", "ERROR")
                 return False
 
     def on_rfid_write_result(self, success):
@@ -1402,9 +1404,7 @@ class MainWindow:
         for tag in self.tag_history:
             if not tag.success:
                 continue
-            read_data = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
-            written_data = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
-            self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, "success" if read_data == written_data else "fail")
+            self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, self.write_result)
 
     # ===================================================================
     #  上报服务端
