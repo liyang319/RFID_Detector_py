@@ -83,8 +83,11 @@ class MainWindow:
                                        username='None', password='None', client_id=self.device_id)
         self.serial_comm = SerialComm(SERIAL_COM_IO, 9600)
         self.serial_reading_active = False
-        self.rfid_reader_serial = RFIDReader_SFM2200(port=SERIAL_COM_RFID_READER, baudrate=115200, timeout=1.0)
-
+        # self.rfid_reader_serial = RFIDReader_SFM2200(port=SERIAL_COM_RFID_READER, baudrate=115200, timeout=1.0)
+        self.rfid_reader_serial = RFIDReader_SFM2200(transport='tcp', host='192.168.1.101',
+            tcp_port=8080,
+            timeout=1.0
+        )
         # ===== 构建UI =====
         self._build_ui()
         self.update_runtime_display()
@@ -1410,12 +1413,14 @@ class MainWindow:
     #  上报服务端
     # ===================================================================
     def report_rfid_tags_to_server(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
+        print('report_rfid_tags_to_server')
         if not REPORT_TO_SERVER:
             self.log("REPORT_TO_SERVER=False, 跳过上报", "DEBUG")
             return False
         if barcodes is None:
             barcodes = []
         if not (self.tag_history or barcodes):
+            self.log("没有任何标签")
             return False
         tag_data = []
         write_match_count = 0
