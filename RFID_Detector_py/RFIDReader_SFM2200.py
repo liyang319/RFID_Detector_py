@@ -251,7 +251,7 @@ class RFIDReader_SFM2200:
                 hex_str = ' '.join(f'{b:02X}' for b in data)
                 print(f"RFID收到数据: {hex_str}")
 
-                # 处理缓冲区：标签数据（FF xx AA）透传给回调，指令响应放入响应队列
+                # 处理缓冲区：标签数据（FF 47 AA / FF 3B AA）透传给回调，指令响应放入响应队列
                 while len(buffer) >= 3:
                     if buffer[0] != 0xFF:
                         # 数据块从包中间开始（残留数据），丢弃直到找到 FF
@@ -262,7 +262,9 @@ class RFIDReader_SFM2200:
                         del buffer[:idx]
                         continue
 
-                    if self._is_tag_report(buffer):
+                    # 标签数据包头为 FF 47 AA 或 FF 3B AA（第二个字节 0x47/0x3B）
+                    # 指令响应如 FF 0C AA、FF 06 AA 的第二个字节为 0x0C/0x06，需归为响应
+                    if buffer[0] == 0xFF and buffer[1] in (0x47, 0x3B) and buffer[2] == 0xAA:
                         # 标签上报数据：透传给回调，由上层解析
                         if self.callback:
                             self.callback(bytes(buffer))
