@@ -69,6 +69,7 @@ class MainWindow:
         self.write_done = False
         self.write_in_progress = False
         self.write_result = ""  # 写标签结果: "success" / "fail"
+        self.process_exception = False  # 流程异常标志（多个货物等异常情况）
         self.b_write_epc = False
         self.current_tag = None
         self.tag_history = []
@@ -269,7 +270,7 @@ class MainWindow:
         self.set_params_btn = ttk.Button(btn_frame, text='设置参数', style='OrangeBtn.TButton',
                                           command=self.on_set_rfid_params)
         self.set_params_btn.grid(row=0, column=1, padx=5, sticky='ew')
-        self.reset_rfid_btn = ttk.Button(btn_frame, text='重启RFID', style='RedBtn.TButton',
+        self.reset_rfid_btn = ttk.Button(btn_frame, text='复位异常', style='RedBtn.TButton',
                                           command=self.on_reset_rfid)
         self.reset_rfid_btn.grid(row=0, column=2, padx=5, sticky='ew')
 
@@ -316,9 +317,26 @@ class MainWindow:
             success = self.rfid_reader_serial.set_antenna_power(ants, read_pwrs, write_pwrs)
             self.log(f"天线功率设置{'成功' if success else '失败'}", "INFO" if success else "ERROR")
 
+    def _trigger_process_exception(self):
+        """触发流程异常：亮红灯，记录异常标志"""
+        self.process_exception = True
+        self.serial_comm.write_register(self.green_light, False, timeout=0.5)
+        self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+        self.serial_comm.write_register(self.red_light, True, timeout=0.5)
+        # 状态机在后台线程运行，用 root.after 安全地更新界面日志
+        self.root.after(0, lambda: self.log("存在多个货物，请人工处理", "ERROR"))
+
+    def _reset_process_exception(self):
+        """复位流程异常：亮绿灯，清除异常标志"""
+        self.process_exception = False
+        self.serial_comm.write_register(self.green_light, True, timeout=0.5)
+        self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
+        self.serial_comm.write_register(self.red_light, False, timeout=0.5)
+
     def on_reset_rfid(self):
-        """重启RFID"""
-        self.log("重启RFID设备", "WARN")
+        """复位异常"""
+        self._reset_process_exception()
+        self.log("复位异常，绿灯亮", "INFO")
 
     def _build_debug_group(self, parent):
         frame = self._labelframe(parent, "调试信息")
@@ -713,11 +731,12 @@ class MainWindow:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.start_rfid_loop_query(False)
+                                                self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
                                                 self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
+                                                self._trigger_process_exception()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_INBOUND_END
                                                 print("入库路径2：光栅1遮挡后直接无遮挡")
@@ -752,24 +771,25 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.start_rfid_loop_query(False)
+                                                self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
                                                 # 新增：异常时也清空条码缓存
                                                 self.clear_barcode_cache()
-                                                print("入库异常：结束状态又回到光栅1遮挡")
                                                 print("存在多个货物，请人工处理")
+                                                self._trigger_process_exception()
 
                                         elif current_state == STATE_OUTBOUND_START:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.start_rfid_loop_query(False)
+                                                self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
                                                 self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
+                                                self._trigger_process_exception()
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库路径2：光栅2遮挡后直接无遮挡")
@@ -804,14 +824,14 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.start_rfid_loop_query(False)
+                                                self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
                                                 # 新增：异常时也清空条码缓存
                                                 self.clear_barcode_cache()
-                                                print("出库异常：结束状态又回到光栅2遮挡")
                                                 print("存在多个货物，请人工处理")
+                                                self._trigger_process_exception()
 
                                         # 处理其他异常状态转换
                                         if current_status == 0x00 and current_state != STATE_IDLE:
