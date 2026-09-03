@@ -43,7 +43,7 @@ class MainWindow:
             self._owns_root = False
 
         self.root.title("北斗+RFID系统集成设备")
-        self.root.geometry("1000x800")
+        self.root.geometry("1000x650")
         self.root.configure(bg='white')
         self.c = {'bg': 'white', 'fg': '#2c3e50', 'accent': '#4CAF50'}
 
@@ -119,8 +119,6 @@ class MainWindow:
         right_col.grid(row=0, column=1, sticky='nsew', padx=(8, 0))
 
         self._build_production_group(left_col)
-        # 弹性空白，将集成设备信息推至底部
-        tk.Frame(left_col, bg='white', height=1).pack(fill='both', expand=True)
         self._build_device_info_group(left_col)
 
         self._build_beidou_group(right_col)
@@ -340,8 +338,8 @@ class MainWindow:
 
     def _build_debug_group(self, parent):
         frame = self._labelframe(parent, "调试信息")
-        frame.pack(fill='both', expand=True)
-        self.debug_text = tk.Text(frame, font=("Consolas", 9), relief='solid', bd=1, bg='white', wrap='word', highlightthickness=0)
+        frame.pack(fill='x', pady=(0, 10))
+        self.debug_text = tk.Text(frame, font=("Consolas", 9), relief='solid', bd=1, bg='white', wrap='word', highlightthickness=0, height=22)
         self.debug_text.pack(fill='both', expand=True, padx=5, pady=5)
         self.debug_text.configure(state='disabled')
         for t in ["ERROR", "WARN", "INFO", "DEBUG"]:
