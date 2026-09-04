@@ -191,7 +191,7 @@ class MainWindow:
         state_inner.pack(fill='x', padx=10, pady=4)
         state_inner.columnconfigure(0, weight=1)
         state_inner.columnconfigure(1, weight=1)
-        self.state_var = tk.StringVar(value="idle")
+        self.state_var = tk.StringVar(value="cargo_out")
         tk.Radiobutton(state_inner, text="产 品 进 入", variable=self.state_var, value="cargo_in",
                        font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=0, padx=10)
         tk.Radiobutton(state_inner, text="产 品 通 过", variable=self.state_var, value="cargo_out",
@@ -1365,10 +1365,14 @@ class MainWindow:
     def _send_tcp_cargo_in_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_in"}, ensure_ascii=False))
         self.add_message("TCP发送: cargo_in")
+        # 界面勾选"产品进入"
+        self.root.after(0, lambda: self.state_var.set("cargo_in"))
 
     def _send_tcp_cargo_out_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_out"}, ensure_ascii=False))
         self.add_message("TCP发送: cargo_out")
+        # 界面勾选"产品通过"
+        self.root.after(0, lambda: self.state_var.set("cargo_out"))
 
     def _send_tcp_report_barcode_message(self, barcode):
         self.tcp_server.send_to_all(json.dumps({"type": "report_barcode", "barcode": barcode}, ensure_ascii=False))
