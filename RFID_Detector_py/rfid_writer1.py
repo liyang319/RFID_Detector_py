@@ -191,7 +191,7 @@ class MainWindow:
         state_inner.pack(fill='x', padx=10, pady=4)
         state_inner.columnconfigure(0, weight=1)
         state_inner.columnconfigure(1, weight=1)
-        self.state_var = tk.StringVar(value="idle")
+        self.state_var = tk.StringVar(value="cargo_out")
         tk.Radiobutton(state_inner, text="产 品 进 入", variable=self.state_var, value="cargo_in",
                        font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=0, padx=10)
         tk.Radiobutton(state_inner, text="产 品 通 过", variable=self.state_var, value="cargo_out",
@@ -1002,33 +1002,30 @@ class MainWindow:
 
     def _try_parse_one_packet_tid_user(self, buffer: bytearray):
         """
-        通过查找 FF 47 AA 特征头边界来提取一个完整包（TID+USER格式）。
-        处理正常包（FF 47 AA）和异常包（FF XX AA, XX≠47）混合的情况。
+        通过查找 FF 47 AA / FF 3B AA 特征头边界来提取一个完整包（TID+USER格式）。
+        处理正常包（FF 47 AA / FF 3B AA）和异常包（FF XX AA, XX为其他值）混合的情况。
         返回 (RFIDTag, consumed_bytes)
         """
-        TID_USER_HEADER = bytes([0xFF, 0x47, 0xAA])
-        header_len = len(TID_USER_HEADER)
+        header_len = 3
 
-        # 查找第一个有效包头位置（FF 47 AA）
+        # 查找第一个有效包头位置（FF 47 AA 或 FF 3B AA）
         first_idx = -1
         for i in range(len(buffer) - header_len + 1):
             if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
-                if buffer[i + 1] == 0x47:
+                if buffer[i + 1] in (0x47, 0x3B):
                     first_idx = i
                     break
                 else:
-                    # 异常包（FF XX AA, XX≠47），跳过前3字节继续搜索
+                    # 异常包（FF XX AA, XX为其他值），跳过前3字节继续搜索
                     pass
 
         if first_idx == -1:
             # 检查缓冲区中是否有任何 FF xx AA 开头的数据
-            has_any = False
             for i in range(len(buffer) - 2):
                 if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
                     # 找到异常包头，跳过前3字节
                     print(f"[RFID Serial TID] 跳过异常包头 FF {buffer[i+1]:02X} AA，丢弃3字节")
                     return None, i + 3
-                    # has_any = True — actually, we break above
             # 没有找到任何 FF xx AA，丢弃所有数据
             consumed = len(buffer)
             print(f"[RFID Serial TID] 未找到有效包头，丢弃 {consumed} 字节")
@@ -1042,7 +1039,7 @@ class MainWindow:
         # 查找第二个有效包头位置（用于确定包结束）
         second_idx = -1
         for i in range(first_idx + header_len, len(buffer) - header_len + 1):
-            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] == 0x47:
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] in (0x47, 0x3B):
                 second_idx = i
                 break
 
@@ -1062,21 +1059,23 @@ class MainWindow:
             return None, header_len
 
     def _parse_single_serial_packet_tid_user(self, data: bytes) -> RFIDTag:
-        """解析一个完整的 TID+USER 格式数据包"""
+        """解析一个完整的 TID+USER 格式数据包（支持 FF 47 AA / FF 3B AA 两种包头）"""
         tag = RFIDTag()
         try:
             # 协议格式（0-based索引）：
-            # 0-2:   固定头 FF 47 AA
-            # 15-34:  TID 数据 (20字节)
+            # 0-2:   固定头 FF 47 AA 或 FF 3B AA
+            # 15-30:  TID 数据 (16字节)
             # 31-50:  USER_DATA 数据 (20字节)
-            # 54-73:  EPC 数据 (20字节)
+            # 51:    EPC 长度 (含4字节附加)
+            # 52-53: PC
+            # 54起:  EPC 数据 (实际长度 = EPC长度 - 4)
 
-            if len(data) < 74:
+            if len(data) < 54:
                 tag.success = False
-                tag.error_message = f"数据长度不足，需要至少74字节，实际 {len(data)}"
+                tag.error_message = f"数据长度不足，需要至少54字节，实际 {len(data)}"
                 return tag
 
-            # TID (20字节)
+            # TID (16字节)
             tid_bytes = data[15:31]
             tag.tid = ''.join(f'{b:02X}' for b in tid_bytes)
 
@@ -1084,8 +1083,14 @@ class MainWindow:
             user_bytes = data[31:51]
             tag.user_data = ''.join(f'{b:02X}' for b in user_bytes)
 
-            # EPC (20字节)
-            epc_bytes = data[54:74]
+            # EPC (长度可变：data[51]为EPC长度含4字节附加，实际EPC = epc_len - 4)
+            epc_len = data[51]
+            real_epc_len = epc_len - 4
+            if real_epc_len <= 0 or len(data) < 54 + real_epc_len:
+                tag.success = False
+                tag.error_message = f"EPC长度异常: {epc_len}"
+                return tag
+            epc_bytes = data[54:54 + real_epc_len]
             tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
 
             # RSSI (尝试从data[7]读取)
@@ -1342,10 +1347,14 @@ class MainWindow:
     def _send_tcp_cargo_in_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_in"}, ensure_ascii=False))
         self.add_message("TCP发送: cargo_in")
+        # 界面勾选"产品进入"
+        self.root.after(0, lambda: self.state_var.set("cargo_in"))
 
     def _send_tcp_cargo_out_message(self):
         self.tcp_server.send_to_all(json.dumps({"type": "cargo_out"}, ensure_ascii=False))
         self.add_message("TCP发送: cargo_out")
+        # 界面勾选"产品通过"
+        self.root.after(0, lambda: self.state_var.set("cargo_out"))
 
     def _send_tcp_report_barcode_message(self, barcode):
         self.tcp_server.send_to_all(json.dumps({"type": "report_barcode", "barcode": barcode}, ensure_ascii=False))
