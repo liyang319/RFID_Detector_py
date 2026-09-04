@@ -1183,7 +1183,7 @@ class MainWindow:
         self.add_message(f"开始写入标签{write_type}({source}): {data_hex}")
 
         # 根据类型调用不同的写方法
-        write_func = self.rfid_reader_serial.write_tag_with_epcdata if b_write_epc else self.rfid_reader_serial.write_tag_with_userdata
+        write_func = self.rfid_reader_serial.write_tag_with_epcdata_new if b_write_epc else self.rfid_reader_serial.write_tag_with_userdata
         success = write_func(write_data)
         if success:
             self.write_done = True
