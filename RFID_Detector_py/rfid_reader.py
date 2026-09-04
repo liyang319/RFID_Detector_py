@@ -727,21 +727,46 @@ class MainWindow:
                                                 #     self._execute_fixed_write()
 
                                         elif current_state == STATE_INBOUND_START:
-                                            if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
-                                                current_state = STATE_IDLE
-                                                self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
-                                                process_start_time = None
-                                                self.tag_history.clear()
-                                                self.clear_barcode_cache()
-                                                print("存在多个货物，请人工处理")
-                                                self._trigger_process_exception()
+                                            if current_status == 0x03:  # 光栅1+2同时遮挡
+                                                current_state = STATE_INBOUND_MIDDLE
+                                                print("入库中间：光栅1+2同时遮挡")
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_INBOUND_END
                                                 print("入库路径2：光栅1遮挡后直接无遮挡")
                                             elif current_status == 0x02:  # 光栅2遮挡
                                                 current_state = STATE_INBOUND_END
                                                 print("入库结束：光栅2遮挡（直接进入）")
+
+                                        elif current_state == STATE_INBOUND_MIDDLE:
+                                            if current_status == 0x02:  # 光栅2遮挡
+                                                current_state = STATE_INBOUND_END
+                                                print("入库结束：光栅2遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
+                                                        self._send_tcp_cargo_out_message()
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"入库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 入库中断
+                                                    self._send_tcp_cargo_out_message()
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("入库中断：中间状态检测到无遮挡")
 
                                         elif current_state == STATE_INBOUND_END:
                                             if current_status == 0x02:  # 光栅2遮挡
@@ -770,31 +795,55 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                self.start_rfid_loop_query(False)
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
                                                 # 新增：异常时也清空条码缓存
                                                 self.clear_barcode_cache()
-                                                print("存在多个货物，请人工处理")
-                                                self._trigger_process_exception()
+                                                print("入库异常：结束状态又回到光栅1遮挡")
 
                                         elif current_state == STATE_OUTBOUND_START:
-                                            if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
-                                                current_state = STATE_IDLE
-                                                self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
-                                                process_start_time = None
-                                                self.tag_history.clear()
-                                                self.clear_barcode_cache()
-                                                print("存在多个货物，请人工处理")
-                                                self._trigger_process_exception()
+                                            if current_status == 0x03:  # 光栅1+2同时遮挡
+                                                current_state = STATE_OUTBOUND_MIDDLE
+                                                print("出库中间：光栅1+2同时遮挡")
                                             elif current_status == 0x00:  # 无遮挡
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库路径2：光栅2遮挡后直接无遮挡")
                                             elif current_status == 0x01:  # 光栅1遮挡
                                                 current_state = STATE_OUTBOUND_END
                                                 print("出库结束：光栅1遮挡（直接进入）")
+
+                                        elif current_state == STATE_OUTBOUND_MIDDLE:
+                                            if current_status == 0x01:  # 光栅1遮挡
+                                                current_state = STATE_OUTBOUND_END
+                                                print("出库结束：光栅1遮挡")
+                                            elif current_status == 0x00:  # 无遮挡
+                                                if self.write_done:
+                                                    # 写入已完成，货物快速通过，视为正常完成
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    if current_time - last_report_time >= report_cooldown:
+                                                        current_barcodes = self.get_all_barcodes()
+                                                        # self._send_tcp_pass_message()
+                                                        self.report_rfid_tags_via_tcp()
+                                                        self._send_tcp_cargo_out_message()
+                                                        self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
+                                                                                       barcodes=current_barcodes)
+                                                        last_report_time = current_time
+                                                        print(f"出库完成（写入后快速通过），包含{len(current_barcodes)}个条码")
+                                                else:
+                                                    # 出库中断
+                                                    self._send_tcp_cargo_out_message()
+                                                    current_state = STATE_IDLE
+                                                    self.direction = 0
+                                                    self.start_rfid_loop_query(False)
+                                                    process_start_time = None
+                                                    self.tag_history.clear()
+                                                    self.clear_barcode_cache()
+                                                    print("出库中断：中间状态检测到无遮挡")
 
                                         elif current_state == STATE_OUTBOUND_END:
                                             if current_status == 0x01:  # 光栅1遮挡
@@ -823,14 +872,13 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                self.start_rfid_loop_query(False)
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
                                                 # 新增：异常时也清空条码缓存
                                                 self.clear_barcode_cache()
-                                                print("存在多个货物，请人工处理")
-                                                self._trigger_process_exception()
+                                                print("出库异常：结束状态又回到光栅2遮挡")
 
                                         # 处理其他异常状态转换
                                         if current_status == 0x00 and current_state != STATE_IDLE:
@@ -875,9 +923,9 @@ class MainWindow:
 
                         self.handle_serial_data(data)
 
-                    # 超时检测（出现异常时不进行超时保护）
+                    # 超时检测
                     current_time = time.time()
-                    if current_state != STATE_IDLE and process_start_time is not None and not self.process_exception:
+                    if current_state != STATE_IDLE and process_start_time is not None:
                         if current_time - last_state_change_time > idle_timeout:
                             print(f"超时检测：状态{current_state}超过{idle_timeout}秒无变化，重置状态")
                             self._send_tcp_cargo_out_message()
@@ -1131,10 +1179,6 @@ class MainWindow:
             self.current_load = len(self.tag_history)
             self.current_load_label.config(text=str(self.current_load))
 
-            # 识别到多个不同EPC的标签，触发流程异常
-            if len(self.tag_history) > 1 and not self.process_exception:
-                self._trigger_process_exception()
-
             # 在取标内容区域追加显示标签信息（可选）
             # display_text = self._format_tag_display(tag)
             # print(display_text)
@@ -1237,10 +1281,6 @@ class MainWindow:
         if not self.write_done and not self.write_in_progress:
             # 停止读取标签
             self.rfid_reader_serial.stoploop()
-            # 检查获取的标签数量，超过1个则触发异常
-            if len(self.tag_history) > 1:
-                self._trigger_process_exception()
-                return
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=True))
 
     def on_cmd_write_user(self, user_data: bytes):
@@ -1252,10 +1292,6 @@ class MainWindow:
         if not self.write_done and not self.write_in_progress:
             # 停止读取标签
             self.rfid_reader_serial.stoploop()
-            # 检查获取的标签数量，超过1个则触发异常
-            if len(self.tag_history) > 1:
-                self._trigger_process_exception()
-                return
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=False))
 
     def on_cmd_beidou_info(self, beidou_id: str, beidou_time: str, beidou_location: str):
