@@ -316,11 +316,12 @@ class MainWindow:
             self.log(f"天线功率设置{'成功' if success else '失败'}", "INFO" if success else "ERROR")
 
     def _trigger_process_exception(self):
-        """触发流程异常：亮红灯，记录异常标志"""
+        """触发流程异常：亮红灯，记录异常标志，停止RFID轮询"""
         self.process_exception = True
         self.serial_comm.write_register(self.green_light, False, timeout=0.5)
         self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
         self.serial_comm.write_register(self.red_light, True, timeout=0.5)
+        self.rfid_reader_serial.stoploop()
         # 状态机在后台线程运行，用 root.after 安全地更新界面日志
         self.root.after(0, lambda: self.log("存在多个货物，请人工处理", "ERROR"))
 
@@ -874,9 +875,9 @@ class MainWindow:
 
                         self.handle_serial_data(data)
 
-                    # 超时检测
+                    # 超时检测（出现异常时不进行超时保护）
                     current_time = time.time()
-                    if current_state != STATE_IDLE and process_start_time is not None:
+                    if current_state != STATE_IDLE and process_start_time is not None and not self.process_exception:
                         if current_time - last_state_change_time > idle_timeout:
                             print(f"超时检测：状态{current_state}超过{idle_timeout}秒无变化，重置状态")
                             self._send_tcp_cargo_out_message()
@@ -913,13 +914,14 @@ class MainWindow:
     def start_rfid_loop_query(self, b_on):
         print(f"start_rfid_loop_query  === {b_on}")
         if b_on:
-            # 入库/出库开始：黄灯亮，清空缓存，不启动RFID读取（等待MIDDLE状态写入后再读取）
+            # 入库/出库开始：黄灯亮，清空缓存，启动RFID读取获取标签
             self.serial_comm.write_register(self.yellow_light, True, timeout=0.5)
             self.serial_comm.write_register(self.green_light, False, timeout=0.5)
             self.tag_history.clear()
             self.write_done = False
             self.write_in_progress = False
             self.write_result = ""
+            self.rfid_reader_serial.startloop_tid_user()
         else:
             # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
@@ -1002,33 +1004,30 @@ class MainWindow:
 
     def _try_parse_one_packet_tid_user(self, buffer: bytearray):
         """
-        通过查找 FF 47 AA 特征头边界来提取一个完整包（TID+USER格式）。
-        处理正常包（FF 47 AA）和异常包（FF XX AA, XX≠47）混合的情况。
+        通过查找 FF 47 AA / FF 3B AA 特征头边界来提取一个完整包（TID+USER格式）。
+        处理正常包（FF 47 AA / FF 3B AA）和异常包（FF XX AA, XX为其他值）混合的情况。
         返回 (RFIDTag, consumed_bytes)
         """
-        TID_USER_HEADER = bytes([0xFF, 0x47, 0xAA])
-        header_len = len(TID_USER_HEADER)
+        header_len = 3
 
-        # 查找第一个有效包头位置（FF 47 AA）
+        # 查找第一个有效包头位置（FF 47 AA 或 FF 3B AA）
         first_idx = -1
         for i in range(len(buffer) - header_len + 1):
             if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
-                if buffer[i + 1] == 0x47:
+                if buffer[i + 1] in (0x47, 0x3B):
                     first_idx = i
                     break
                 else:
-                    # 异常包（FF XX AA, XX≠47），跳过前3字节继续搜索
+                    # 异常包（FF XX AA, XX为其他值），跳过前3字节继续搜索
                     pass
 
         if first_idx == -1:
             # 检查缓冲区中是否有任何 FF xx AA 开头的数据
-            has_any = False
             for i in range(len(buffer) - 2):
                 if buffer[i] == 0xFF and buffer[i + 2] == 0xAA:
                     # 找到异常包头，跳过前3字节
                     print(f"[RFID Serial TID] 跳过异常包头 FF {buffer[i+1]:02X} AA，丢弃3字节")
                     return None, i + 3
-                    # has_any = True — actually, we break above
             # 没有找到任何 FF xx AA，丢弃所有数据
             consumed = len(buffer)
             print(f"[RFID Serial TID] 未找到有效包头，丢弃 {consumed} 字节")
@@ -1042,7 +1041,7 @@ class MainWindow:
         # 查找第二个有效包头位置（用于确定包结束）
         second_idx = -1
         for i in range(first_idx + header_len, len(buffer) - header_len + 1):
-            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] == 0x47:
+            if buffer[i] == 0xFF and buffer[i + 2] == 0xAA and buffer[i + 1] in (0x47, 0x3B):
                 second_idx = i
                 break
 
@@ -1062,21 +1061,23 @@ class MainWindow:
             return None, header_len
 
     def _parse_single_serial_packet_tid_user(self, data: bytes) -> RFIDTag:
-        """解析一个完整的 TID+USER 格式数据包"""
+        """解析一个完整的 TID+USER 格式数据包（支持 FF 47 AA / FF 3B AA 两种包头）"""
         tag = RFIDTag()
         try:
             # 协议格式（0-based索引）：
-            # 0-2:   固定头 FF 47 AA
-            # 15-34:  TID 数据 (20字节)
+            # 0-2:   固定头 FF 47 AA 或 FF 3B AA
+            # 15-30:  TID 数据 (16字节)
             # 31-50:  USER_DATA 数据 (20字节)
-            # 54-73:  EPC 数据 (20字节)
+            # 51:    EPC 长度 (含4字节附加)
+            # 52-53: PC
+            # 54起:  EPC 数据 (实际长度 = EPC长度 - 4)
 
-            if len(data) < 74:
+            if len(data) < 54:
                 tag.success = False
-                tag.error_message = f"数据长度不足，需要至少74字节，实际 {len(data)}"
+                tag.error_message = f"数据长度不足，需要至少54字节，实际 {len(data)}"
                 return tag
 
-            # TID (20字节)
+            # TID (16字节)
             tid_bytes = data[15:31]
             tag.tid = ''.join(f'{b:02X}' for b in tid_bytes)
 
@@ -1084,8 +1085,14 @@ class MainWindow:
             user_bytes = data[31:51]
             tag.user_data = ''.join(f'{b:02X}' for b in user_bytes)
 
-            # EPC (20字节)
-            epc_bytes = data[54:74]
+            # EPC (长度可变：data[51]为EPC长度含4字节附加，实际EPC = epc_len - 4)
+            epc_len = data[51]
+            real_epc_len = epc_len - 4
+            if real_epc_len <= 0 or len(data) < 54 + real_epc_len:
+                tag.success = False
+                tag.error_message = f"EPC长度异常: {epc_len}"
+                return tag
+            epc_bytes = data[54:54 + real_epc_len]
             tag.epc = ''.join(f'{b:02X}' for b in epc_bytes)
 
             # RSSI (尝试从data[7]读取)
@@ -1123,6 +1130,10 @@ class MainWindow:
             # 更新当前装载数量
             self.current_load = len(self.tag_history)
             self.current_load_label.config(text=str(self.current_load))
+
+            # 识别到多个不同EPC的标签，触发流程异常
+            if len(self.tag_history) > 1 and not self.process_exception:
+                self._trigger_process_exception()
 
             # 在取标内容区域追加显示标签信息（可选）
             # display_text = self._format_tag_display(tag)
@@ -1224,6 +1235,12 @@ class MainWindow:
         if self.direction == 0:
             self.log("TCP写EPC忽略：不在出入库过程中", "WARN"); return
         if not self.write_done and not self.write_in_progress:
+            # 停止读取标签
+            self.rfid_reader_serial.stoploop()
+            # 检查获取的标签数量，超过1个则触发异常
+            if len(self.tag_history) > 1:
+                self._trigger_process_exception()
+                return
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=True))
 
     def on_cmd_write_user(self, user_data: bytes):
@@ -1233,6 +1250,12 @@ class MainWindow:
         if self.direction == 0:
             self.log("TCP写USER_DATA忽略：不在出入库过程中", "WARN"); return
         if not self.write_done and not self.write_in_progress:
+            # 停止读取标签
+            self.rfid_reader_serial.stoploop()
+            # 检查获取的标签数量，超过1个则触发异常
+            if len(self.tag_history) > 1:
+                self._trigger_process_exception()
+                return
             self.root.after(0, lambda: self._execute_fixed_write(b_write_epc=False))
 
     def on_cmd_beidou_info(self, beidou_id: str, beidou_time: str, beidou_location: str):
