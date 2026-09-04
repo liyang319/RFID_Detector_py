@@ -1464,6 +1464,19 @@ class MainWindow:
             if data_type == DATA_TYPE_INBOUND: self.inbound_total += len(tag_data)
             else: self.outbound_total += len(tag_data)
             self.root.after(0, lambda: self.total_label.configure(text=str(self.inbound_total + self.outbound_total)))
+            # 完成后将最后标签的TID/EPC填入集成设备信息，并解析标签数据更新生产线信息
+            if self.tag_history:
+                    last = self.tag_history[-1]
+                    self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
+                    # 解析获取的标签数据（写EPC时取EPC，写USER_DATA时取USER_DATA），更新生产线信息UI
+                    data_str = last.epc if self.b_write_epc else last.user_data
+                    try:
+                        data_bytes = bytes.fromhex(data_str.replace(' ', ''))
+                        if len(data_bytes) >= 20:
+                            self.root.after(0, lambda: self.parse_product_info(data_bytes[:20]))
+                    except ValueError:
+                        pass
+            
             if REPORT_USE_MQTT:
                 self.send_mqtt_command('report_tags', data_type, {
                     'tags': tag_data, 'barcodes': barcodes,
@@ -1486,10 +1499,7 @@ class MainWindow:
                             self.log(f"HTTP上报 OK EPC={td['epc']}", "INFO")
                     except Exception as e:
                         self.log(f"HTTP上报失败: {e}", "ERROR")
-            # 完成后将最后标签的TID/EPC填入集成设备信息
-            if self.tag_history:
-                last = self.tag_history[-1]
-                self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
+            
             self.tag_history.clear()
             self.write_done = False
             self.actual_write_data = None
