@@ -42,7 +42,7 @@ class MainWindow:
             self.root = root
             self._owns_root = False
 
-        self.root.title("北斗+RFID系统集成设备")
+        self.root.title("北斗+RFID系统集成设备(校验端)")
         self.root.geometry("1000x650")
         self.root.configure(bg='white')
         self.c = {'bg': 'white', 'fg': '#2c3e50', 'accent': '#4CAF50'}
@@ -103,7 +103,7 @@ class MainWindow:
     def _build_ui(self):
         title_frame = tk.Frame(self.root, bg='white')
         title_frame.pack(fill='x', padx=15, pady=(15, 5))
-        tk.Label(title_frame, text="北斗+RFID系统集成设备",
+        tk.Label(title_frame, text="北斗+RFID系统集成设备(校验端)",
                  font=("Microsoft YaHei", 16, "bold"),
                  bg='white', fg='#2c3e50').pack()
 
