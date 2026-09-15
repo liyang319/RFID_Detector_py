@@ -534,19 +534,13 @@ class MainWindow:
         """启动串口 RFID 读写器"""
         def connect():
             if self.rfid_reader_serial.open():
-                self.add_message("串口 RFID 读写器连接成功")
+                self.add_message("RFID 读写器连接成功")
                 self.rfid_reader_serial.set_callback(self.on_rfid_serial_data)
                 self.rfid_reader_serial.start_receive_loop()
                 self.rfid_reader_serial.start_firmware()
                 self.rfid_reader_serial.set_write_callback(self.on_rfid_write_result)
-                # user_data = bytes([
-                #     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00,
-                #     0xaa, 0xaa, 0xbb, 0xbb, 0xcc, 0xcc, 0xdd, 0xdd, 0xee, 0xee
-                # ])
-                # self.rfid_reader_serial.write_tag_with_epcdata(user_data)
-                # self.rfid_reader_serial.startloop_tid_user()
             else:
-                self.log("串口 RFID 读写器连接失败", "ERROR")
+                self.log("RFID 读写器连接失败", "ERROR")
         threading.Thread(target=connect, daemon=True).start()
 
     # ===================================================================
@@ -701,8 +695,9 @@ class MainWindow:
 
                                                 # 防重复报告
                                                 if current_time - last_report_time >= report_cooldown:
-                                                    self.report_rfid_tags_via_tcp()
+                                                    # self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
+                                                    self._send_tcp_write_result_message()
                                                     self._finalize_tag_report(DATA_TYPE_INBOUND)
                                                     last_report_time = current_time
                                                     print("入库完成")
@@ -747,8 +742,9 @@ class MainWindow:
 
                                                 # 防重复报告
                                                 if current_time - last_report_time >= report_cooldown:
-                                                    self.report_rfid_tags_via_tcp()
+                                                    # self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
+                                                    self._send_tcp_write_result_message()
                                                     self._finalize_tag_report(DATA_TYPE_OUTBOUND)
                                                     last_report_time = current_time
                                                     print("出库完成")
@@ -1242,6 +1238,12 @@ class MainWindow:
             if not tag.success:
                 continue
             self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, self.write_result)
+
+    def _send_tcp_write_result_message(self):
+        self.tcp_server.send_to_all(json.dumps({
+            "type": "write_result", "result": self.write_result
+        }, ensure_ascii=False))
+        self.add_message(f"TCP发送: write_result={self.write_result}")
 
     # ===================================================================
     #  完成出入库
