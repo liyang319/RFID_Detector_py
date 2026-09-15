@@ -13,8 +13,6 @@ from rfid_tag import RFIDTag
 from serial_comm import SerialComm
 from TcpSocketServer import TcpSocketServer
 from RFIDReader_SFM2200 import RFIDReader_SFM2200
-from product_info_def import (get_product_name, get_manufacturer_name,
-                               get_license_number, get_package_name)
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
@@ -384,8 +382,19 @@ class MainWindow:
                 'frequency': self.frequency_edit.get()}
 
     # ===================================================================
-    #  parse_product_info 预留
+    #  parse_product_info
     # ===================================================================
+    def _get_business_data(self):
+        """加载并缓存 business.json 数据"""
+        if not hasattr(self, '_business_data'):
+            try:
+                with open('business.json', 'r', encoding='utf-8') as f:
+                    self._business_data = json.load(f)
+            except Exception as e:
+                self.log(f"加载business.json失败: {e}", "ERROR")
+                self._business_data = {}
+        return self._business_data
+
     def parse_product_info(self, data: bytes):
         """解析20字节编码数据并填写生产线信息"""
         self.log(f"parse_product_info 收到数据 ({len(data)}字节): {data.hex().upper()}", "DEBUG")
@@ -393,74 +402,72 @@ class MainWindow:
             self.log(f"parse_product_info 数据长度不足: {len(data)}", "WARN")
             return
 
+        business = self._get_business_data()
+
         # 编码规则（0-based，共20字节）：
         # 0:     0x00 (字对齐填充)
         # 1-3:   产品种类代码 ASCII (3字节)
         # 4-5:   生产企业代码 ASCII (2字节)
-        # 6-7:   生产许可证编号 hex (2字节)
-        # 8-9:   规格型号 hex (2字节)
+        # 6-7:   生产许可证编号 (2字节)
+        # 8:     规格型号-数值
+        # 9:     规格型号-ASCII
         # 10:    包装方式 ASCII (1字节)
-        # 11-12: 净质量 hex (2字节)
-        # 13:    生产日期-年 hex
-        # 14:    生产日期-月 hex
-        # 15:    生产日期-日 hex
-        # 16-17: 生产批号 hex (2字节)
-        # 18-19: 袋/箱号 hex (2字节)
+        # 11-12: 净质量 ASCII (2字节)
+        # 13:    生产日期-年
+        # 14:    生产日期-月
+        # 15:    生产日期-日
+        # 16-17: 生产批号 (2字节)
+        # 18-19: 袋/箱号 (2字节)
 
-        # 产品种类代码 (bytes 1-3, ASCII)
-        product_bytes = data[1:4]
-        product_code = product_bytes.decode('ascii', errors='replace')
-        self.log(f"  产品种类: {product_bytes.hex().upper()} -> '{product_code}'", "DEBUG")
-        product_name = get_product_name(product_code)
+        # 产品种类代码 (bytes 1-3, ASCII) -> 查 business.json products
+        product_code = data[1:4].decode('ascii', errors='replace')
+        product_name = f"未知产品({product_code})"
+        for product in business.get('products', []):
+            if product.get('code') == product_code:
+                product_name = product.get('name', product_name)
+                break
         self._set_editable_entry('product_type', product_name)
 
-        # 生产企业代码 (bytes 4-5, ASCII)
-        manu_bytes = data[4:6]
-        manu_code = manu_bytes.decode('ascii', errors='replace')
-        self.log(f"  生产企业: {manu_bytes.hex().upper()} -> '{manu_code}'", "DEBUG")
-        manu_name = get_manufacturer_name(manu_code)
+        # 生产企业代码 (bytes 4-5, ASCII) -> 查 business.json factory
+        manu_code = data[4:6].decode('ascii', errors='replace')
+        factory = business.get('factory', {})
+        if factory.get('code') == manu_code:
+            manu_name = factory.get('name', '未知企业')
+        else:
+            manu_name = '未知企业'
         self._set_editable_entry('manufacturer_edit', manu_name)
 
-        # 生产许可证编号 (bytes 6-7, big-endian)
+        # 生产许可证编号 (bytes 6-7, big-endian)，显示为 MB+数值
         license_num = int.from_bytes(data[6:8], 'big')
-        self.log(f"  许可证号: {data[6:8].hex().upper()} -> {license_num:04d}", "DEBUG")
-        self._set_editable_entry('license_number', f"{license_num:04d}")
+        self._set_editable_entry('license_number', f"MB{license_num}")
 
-        # 规格型号 (bytes 8-9, big-endian)
-        spec_val = int.from_bytes(data[8:10], 'big')
-        self.log(f"  规格型号: {data[8:10].hex().upper()} -> {spec_val}", "DEBUG")
-        self._set_editable_entry('type_box', f"{spec_val}")
+        # 规格型号 (byte 8 数值 + byte 9 ASCII)，如 0x18,0x4C -> "24L"
+        spec_val = f"{data[8]}{chr(data[9])}"
+        self._set_editable_entry('type_box', spec_val)
 
-        # 包装方式 (byte 10, ASCII)
-        pkg_byte = data[10]
-        pkg_char = chr(pkg_byte) if 0x20 <= pkg_byte < 0x7F else '?'
-        self.log(f"  包装方式: {pkg_byte:02X} -> '{pkg_char}'", "DEBUG")
-        pkg_name = get_package_name(pkg_byte)
-        if pkg_name == "袋装":
+        # 包装方式 (byte 10, ASCII): 'D'=袋装，其他('X')=箱装
+        pkg_char = chr(data[10])
+        if pkg_char == 'D':
             self.pkg_var.set("bag")
         else:
             self.pkg_var.set("box")
 
-        # 净质量 (bytes 11-12, big-endian)
-        weight_val = int.from_bytes(data[11:13], 'big')
-        self.log(f"  净质量: {data[11:13].hex().upper()} -> {weight_val}", "DEBUG")
-        self._set_editable_entry('weight_box', f"{weight_val}")
+        # 净质量 (bytes 11-12, ASCII)
+        weight_val = data[11:13].decode('ascii', errors='replace')
+        self._set_editable_entry('weight_box', weight_val)
 
-        # 生产日期 (bytes 13-15: yy, mm, dd)
+        # 生产日期 (bytes 13-15: yy, mm, dd) -> "240803"
         yy = data[13]
         mm = data[14]
         dd = data[15]
-        self.log(f"  生产日期: {yy:02X} {mm:02X} {dd:02X} -> 20{yy:02d}-{mm:02d}-{dd:02d}", "DEBUG")
         self._set_editable_entry('production_date', f"{yy:02d}{mm:02d}{dd:02d}")
 
         # 生产批号 (bytes 16-17, big-endian)
         batch_val = int.from_bytes(data[16:18], 'big')
-        self.log(f"  生产批号: {data[16:18].hex().upper()} -> {batch_val:04d}", "DEBUG")
         self._set_editable_entry('batch_number', f"{batch_val:04d}")
 
         # 生产袋/箱号 (bytes 18-19, big-endian)
         box_val = int.from_bytes(data[18:20], 'big')
-        self.log(f"  袋/箱号: {data[18:20].hex().upper()} -> {box_val:04d}", "DEBUG")
         self._set_editable_entry('package_number', f"{box_val:04d}")
 
         # 信息代码
