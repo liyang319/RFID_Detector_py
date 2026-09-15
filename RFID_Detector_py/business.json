@@ -1,0 +1,45 @@
+{
+  "work_mode": "auto",
+  "factory": {
+    "name": "山西江阳兴安民爆器材",
+    "code": "D6",
+    "license": "MB140"
+  },
+  "products": [
+    {
+      "name": "乳化炸药",
+      "code": "07X",
+      "types": ["30L", "60L"],
+      "package": "bag",
+      "weights": ["30", "60"]
+    },
+    {
+      "name": "粘性炸药",
+      "code": "02W",
+      "types": ["25L", "30L"],
+      "package": "bag",
+      "weights": ["30", "60"]
+    },
+    {
+      "name": "起爆具",
+      "code": "XXX",
+      "types": ["25L", "30L"],
+      "package": "box",
+      "weights": ["30", "60"]
+    },
+    {
+      "name": "高爆速震源药柱",
+      "code": "XXX",
+      "types": ["40L", "80L"],
+      "package": "box",
+      "weights": ["30", "60"]
+    },
+    {
+      "name": "高密度震源药柱",
+      "code": "47X",
+      "types": ["24L", "48L"],
+      "package": "box",
+      "weights": ["24", "48"]
+    }
+  ]
+}
