@@ -20,9 +20,12 @@ from product_info_def import (get_product_name, get_manufacturer_name,
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-SERIAL_COM_IO = "/dev/tty.usbserial-14240"
-SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
+# SERIAL_COM_IO = "/dev/tty.usbserial-14240"
+# SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+# SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
+SERIAL_COM_IO = "/dev/ttyS0"
+SERIAL_COM_RFID_READER = "/dev/ttysWK3"
+SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
 REPORT_USE_MQTT = False
 REPORT_TO_SERVER = True
 API_BASE_URL = "http://127.0.0.1:8000"
@@ -505,8 +508,8 @@ class MainWindow:
             self.start_serial_communication()
 
             # 新增：延迟一段时间后连接条码扫描器
-            time.sleep(2)  # 再等待2秒
-            self.start_barcode_scanner_communication()
+            # time.sleep(2)  # 再等待2秒
+            # self.start_barcode_scanner_communication()
 
             # 新增：SFM2200
             time.sleep(1)
