@@ -6,13 +6,11 @@ from datetime import datetime
 import time
 import threading
 import json
-import urllib.request
 from datetime import datetime
 
+
 from rfid_tag import RFIDTag
-from mqtt_client import MqttClient
 from serial_comm import SerialComm
-from barcode_scanner import BarCodeScanner
 from TcpSocketServer import TcpSocketServer
 from RFIDReader_SFM2200 import RFIDReader_SFM2200
 from product_info_def import (get_product_name, get_manufacturer_name,
@@ -22,13 +20,8 @@ DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
 # SERIAL_COM_IO = "/dev/tty.usbserial-14240"
 # SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-# SERIAL_COM_BARCODE_SCANNER = "/dev/tty.usbserial-14210"
 SERIAL_COM_IO = "/dev/ttyS0"
 SERIAL_COM_RFID_READER = "/dev/ttysWK3"
-SERIAL_COM_BARCODE_SCANNER = "/dev/ttyS1"
-REPORT_USE_MQTT = False
-REPORT_TO_SERVER = True
-API_BASE_URL = "http://127.0.0.1:8000"
 
 ENTRY_WIDTH = 18
 LABEL_WIDTH = 12
@@ -79,12 +72,8 @@ class MainWindow:
         self.max_history_size = 10000
         self.device_id = "RFID-DETECTOR-001"
         self.current_tid = ""
-        self.bar_scanner = None
-        self.barcode_reported = False
 
         # 后端服务
-        self.mqtt_client = MqttClient(broker='192.168.3.83', port=1883,
-                                       username='None', password='None', client_id=self.device_id)
         self.serial_comm = SerialComm(SERIAL_COM_IO, 9600)
         self.serial_reading_active = False
         # self.rfid_reader_serial = RFIDReader_SFM2200(port=SERIAL_COM_RFID_READER, baudrate=115200, timeout=1.0)
@@ -209,7 +198,6 @@ class MainWindow:
         frame.columnconfigure(1, weight=1)
 
         rows = [
-            ("条形码：", 'barcode_edit'),
             ("待写入代码：", 'pending_code_edit'),
             ("TID：", 'tid_edit'),
             ("EPC：", 'epc_edit'),
@@ -386,7 +374,6 @@ class MainWindow:
         self.runtime_label.configure(text=f"{h:02d}时{m:02d}分{s:02d}秒")
         self.root.after(1000, self.update_runtime_display)
 
-    def update_barcode(self, text): self._set_entry('barcode_edit', text)
     def update_tid(self, text): self._set_entry('tid_edit', text.replace(' ', ''))
     def update_epc(self, text): self._set_entry('epc_edit', text.replace(' ', ''))
     def update_pending_code(self, text): self._set_entry('pending_code_edit', text.replace(' ', ''))
@@ -482,7 +469,7 @@ class MainWindow:
         self.log(f"产品信息已解析: 产品={product_name}, 企业={manu_name}, 日期=20{yy:02d}-{mm:02d}-{dd:02d}", "INFO")
 
     # ===================================================================
-    #  网络 / MQTT / 串口 启动
+    #  网络 / 串口 启动
     # ===================================================================
     def start_tcp_server(self):
         """启动TCP Socket Server"""
@@ -494,43 +481,20 @@ class MainWindow:
         threading.Thread(target=run_server, daemon=True).start()
 
     def auto_connect(self):
-        """自动连接RFID读写器和MQTT客户端（分别启动）"""
-        self.add_message("系统启动，准备连接RFID读写器和MQTT客户端...")
-
-        def connect_mqtt_thread():
-            """MQTT客户端连接线程"""
-            time.sleep(3)  # 延迟3秒连接，避免同时启动造成资源竞争
-            self.start_mqtt_client()
+        """自动连接RFID读写器（分别启动）"""
+        self.add_message("系统启动，准备连接RFID读写器...")
 
         def connect_serial_thread():
             """串口连接线程"""
             time.sleep(4)  # 延迟4秒连接，避免资源竞争
             self.start_serial_communication()
 
-            # 新增：延迟一段时间后连接条码扫描器
-            # time.sleep(2)  # 再等待2秒
-            # self.start_barcode_scanner_communication()
-
             # 新增：SFM2200
             time.sleep(1)
             self.start_rfid_reader_serial()
 
-        # 分别启动两个线程
-        threading.Thread(target=connect_mqtt_thread, daemon=True).start()
+        # 启动串口连接线程
         threading.Thread(target=connect_serial_thread, daemon=True).start()
-
-    def start_mqtt_client(self):
-        """启动MQTT客户端连接"""
-        def connect_thread():
-            try:
-                self.mqtt_client.connect()
-                # 订阅必要的主题
-                self.mqtt_client.subscribe(self.mqtt_client.data_topic)
-                self.mqtt_client.subscribe(self.mqtt_client.response_topic)
-                self.add_message("MQTT客户端启动成功")
-            except Exception as e:
-                self.log(f"MQTT客户端启动失败: {e}", "ERROR")
-        threading.Thread(target=connect_thread, daemon=True).start()
 
     def start_serial_communication(self):
         """启动串口通信（在UI线程中安全调用）"""
@@ -558,26 +522,6 @@ class MainWindow:
         except Exception as e:
             self.log(f"串口连接异常: {e}", "ERROR")
             return False
-
-    def start_barcode_scanner_communication(self):
-        """启动条码扫描器通信"""
-        try:
-            self.bar_scanner = BarCodeScanner(
-                port=SERIAL_COM_BARCODE_SCANNER,
-                baudrate=9600,
-                timeout=1.0
-            )
-            self.bar_scanner.set_callback(self.on_barcode_received)
-            if self.bar_scanner.open():
-                self.add_message("条码扫描器串口已连接")
-                if self.bar_scanner.start_receive_loop():
-                    self.add_message("条码扫描器接收线程已启动")
-                else:
-                    self.log("条码扫描器接收线程启动失败", "ERROR")
-            else:
-                self.log("条码扫描器串口连接失败", "ERROR")
-        except Exception as e:
-            self.log(f"启动条码扫描器失败: {e}", "ERROR")
 
     def start_rfid_reader_serial(self):
         """启动串口 RFID 读写器"""
@@ -706,9 +650,6 @@ class MainWindow:
                                                 print("入库开始：光栅1遮挡")
                                                 self._send_tcp_cargo_in_message()
 
-                                                # 新增：清空条码缓存，开始收集入库条码
-                                                self.clear_barcode_cache()
-
                                                 # # 货物进入通道，执行写标签（覆盖Path1和Path2）
                                                 # if not self.write_done and not self.write_in_progress:
                                                 #     self._execute_fixed_write()
@@ -721,9 +662,6 @@ class MainWindow:
                                                 print("出库开始：光栅2遮挡")
                                                 self._send_tcp_cargo_in_message()
 
-                                                # 新增：清空条码缓存，开始收集出库条码
-                                                self.clear_barcode_cache()
-
                                                 # # 货物进入通道，执行写标签（覆盖Path1和Path2）
                                                 # if not self.write_done and not self.write_in_progress:
                                                 #     self._execute_fixed_write()
@@ -735,7 +673,6 @@ class MainWindow:
                                                 self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
-                                                self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
                                                 self._trigger_process_exception()
                                             elif current_status == 0x00:  # 无遮挡
@@ -757,15 +694,11 @@ class MainWindow:
 
                                                 # 防重复报告
                                                 if current_time - last_report_time >= report_cooldown:
-                                                    # 新增：获取本次入库的所有条码
-                                                    current_barcodes = self.get_all_barcodes()
-                                                    # self._send_tcp_pass_message()
                                                     self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
-                                                    self.report_rfid_tags_to_server(DATA_TYPE_INBOUND,
-                                                                                   barcodes=current_barcodes)
+                                                    self._finalize_tag_report(DATA_TYPE_INBOUND)
                                                     last_report_time = current_time
-                                                    print(f"入库完成，包含{len(current_barcodes)}个条码")
+                                                    print("入库完成")
                                                 else:
                                                     print("入库完成（跳过重复报告）")
                                             elif current_status == 0x01:  # 又回到光栅1遮挡
@@ -776,8 +709,6 @@ class MainWindow:
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
-                                                # 新增：异常时也清空条码缓存
-                                                self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
                                                 self._trigger_process_exception()
 
@@ -788,7 +719,6 @@ class MainWindow:
                                                 self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
-                                                self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
                                                 self._trigger_process_exception()
                                             elif current_status == 0x00:  # 无遮挡
@@ -810,15 +740,11 @@ class MainWindow:
 
                                                 # 防重复报告
                                                 if current_time - last_report_time >= report_cooldown:
-                                                    # 新增：获取本次出库的所有条码
-                                                    current_barcodes = self.get_all_barcodes()
-                                                    # self._send_tcp_pass_message()
                                                     self.report_rfid_tags_via_tcp()
                                                     self._send_tcp_cargo_out_message()
-                                                    self.report_rfid_tags_to_server(DATA_TYPE_OUTBOUND,
-                                                                                   barcodes=current_barcodes)
+                                                    self._finalize_tag_report(DATA_TYPE_OUTBOUND)
                                                     last_report_time = current_time
-                                                    print(f"出库完成，包含{len(current_barcodes)}个条码")
+                                                    print("出库完成")
                                                 else:
                                                     print("出库完成（跳过重复报告）")
                                             elif current_status == 0x02:  # 又回到光栅2遮挡
@@ -829,8 +755,6 @@ class MainWindow:
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
-                                                # 新增：异常时也清空条码缓存
-                                                self.clear_barcode_cache()
                                                 print("存在多个货物，请人工处理")
                                                 self._trigger_process_exception()
 
@@ -849,9 +773,6 @@ class MainWindow:
                                                     self.direction = 0
                                                     process_start_time = None
                                                     self.tag_history.clear()  # 清空未完成的标签记录
-
-                                                    # 新增：异常中断时也清空条码缓存
-                                                    self.clear_barcode_cache()
 
                                         # 如果状态发生变化，更新状态变化时间
                                         if old_state != current_state:
@@ -897,9 +818,6 @@ class MainWindow:
                             previous_status = 0
                             last_confirm_check_time = 0
 
-                            # 新增：超时重置时也清空条码缓存
-                            self.clear_barcode_cache()
-
                     # 控制读取间隔
                     elapsed = time.time() - start_time
                     sleep_time = max(0, read_interval - elapsed)
@@ -928,31 +846,6 @@ class MainWindow:
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
             self.rfid_reader_serial.stoploop()
-
-    # RFID读写器相关方法
-
-    def _finish(self, data_type, current_state, process_start_time, last_report_time, report_cooldown):
-        self.start_rfid_loop_query(False)
-        self._send_tcp_cargo_out_message()
-        barcodes = self.get_all_barcodes()
-        self.report_rfid_tags_via_tcp()
-        self.report_rfid_tags_to_server(data_type, barcodes=barcodes)
-        # 完成后显示最后标签的TID/EPC
-        if self.tag_history:
-            last = self.tag_history[-1]
-            self.root.after(0, lambda: self._show_last_tag(last))
-
-    def _abort(self):
-        self._send_tcp_cargo_out_message()
-        self.start_rfid_loop_query(False)
-        self.tag_history.clear()
-        self.clear_barcode_cache()
-
-    def _show_last_tag(self, tag):
-        self.update_tid(tag.tid)
-        self.update_epc(tag.epc)
-        self.current_load_label.configure(text="0")
-        self.total_label.configure(text=str(self.inbound_total + self.outbound_total))
 
     # ===================================================================
     #  RFID数据解析
@@ -1151,20 +1044,6 @@ class MainWindow:
                         break
             else:
                 self.add_message(f"串口RFID检测到重复标签，EPC: {tag.epc} 已存在")
-    def on_barcode_received(self, barcode):
-        if not barcode: return
-        self.root.after(0, lambda: self.update_barcode(barcode))
-        if self.direction != 0 and not self.barcode_reported:
-            self.barcode_reported = True
-            self._send_tcp_report_barcode_message(barcode)
-
-    def clear_barcode_cache(self):
-        self.barcode_reported = False
-        if self.bar_scanner:
-            with self.bar_scanner.lock: self.bar_scanner.barcode_queue.clear()
-
-    def get_all_barcodes(self):
-        return self.bar_scanner.get_all_barcodes() if self.bar_scanner else []
 
     # ===================================================================
     #  写标签
@@ -1319,28 +1198,6 @@ class MainWindow:
     # ===================================================================
     #  TCP发送
     # ===================================================================
-    def send_mqtt_command(self, command, data_type, data=None):
-        """发送MQTT命令"""
-        if not hasattr(self, 'mqtt_client') or not self.mqtt_client.connected:
-            self.log("MQTT客户端未连接，无法发送命令", "WARN")
-            return False
-        try:
-            command_data = {
-                "cmd": command,
-                "data_type": "inbound" if data_type == DATA_TYPE_INBOUND else "outbound",
-                "tag_count": len(data.get('tags', [])) if data and 'tags' in data else 0,
-                "barcode_count": len(data.get('barcodes', [])) if data and 'barcodes' in data else 0
-            }
-            if data:
-                command_data.update(data)
-            message = json.dumps(command_data)
-            self.mqtt_client.publish(self.mqtt_client.command_topic, message)
-            self.add_message(f"发送MQTT命令: {command}")
-            return True
-        except Exception as e:
-            self.log(f"发送MQTT命令失败: {e}", "ERROR")
-            return False
-
     def _send_tcp_pass_message(self):
         """通过TCP向连接的客户端发送通行完成消息"""
         tag_count = len(self.tag_history)
@@ -1358,10 +1215,6 @@ class MainWindow:
         self.add_message("TCP发送: cargo_out")
         # 界面勾选"产品通过"
         self.root.after(0, lambda: self.state_var.set("cargo_out"))
-
-    def _send_tcp_report_barcode_message(self, barcode):
-        self.tcp_server.send_to_all(json.dumps({"type": "report_barcode", "barcode": barcode}, ensure_ascii=False))
-        self.add_message(f"TCP发送: report_barcode {barcode}")
 
     @staticmethod
     def _hex_str_to_bytes(hex_str):
@@ -1384,64 +1237,26 @@ class MainWindow:
             self._send_tcp_rfid_data_message(tag.tid, tag.epc, tag.user_data, self.write_result)
 
     # ===================================================================
-    #  上报服务端
+    #  完成出入库
     # ===================================================================
-    def report_rfid_tags_to_server(self, data_type=DATA_TYPE_INBOUND, barcodes=None):
-        print('report_rfid_tags_to_server')
-        if not REPORT_TO_SERVER:
-            self.log("REPORT_TO_SERVER=False, 跳过上报", "DEBUG")
-            return False
-        if barcodes is None:
-            barcodes = []
-        if not (self.tag_history or barcodes):
+    def _finalize_tag_report(self, data_type=DATA_TYPE_INBOUND):
+        """完成出入库：更新识别总量、显示最后标签、清空历史"""
+        valid_count = sum(1 for tag in self.tag_history if tag.success)
+        if not valid_count:
             self.log("没有任何标签")
             return False
-        tag_data = []
-        write_match_count = 0
-        for tag in self.tag_history:
-            if not tag.success:
-                continue
-            read_data = tag.epc.replace(' ', '').upper() if self.b_write_epc else tag.user_data.replace(' ', '').upper()
-            written_data = self.actual_write_data.hex().upper() if self.actual_write_data else self.FIXED_DEFAULT_DATA.hex().upper()
-            data_match = (read_data == written_data)
-            if data_match:
-                    write_match_count += 1
-            tag_data.append({'epc': tag.epc, 'tid': tag.tid, 'user_data': tag.user_data, 'rssi': tag.rssi,
-                             'timestamp': tag.timestamp, 'product_name': tag.product_name,
-                             'antenna_num': tag.antenna_num, 'write_verified': data_match})
-        if tag_data:
-            if data_type == DATA_TYPE_INBOUND: self.inbound_total += len(tag_data)
-            else: self.outbound_total += len(tag_data)
-            self.root.after(0, lambda: self.total_label.configure(text=str(self.inbound_total + self.outbound_total)))
-            if REPORT_USE_MQTT:
-                self.send_mqtt_command('report_tags', data_type, {
-                    'tags': tag_data, 'barcodes': barcodes,
-                    'validation': {'write_verified_count': write_match_count, 'write_total_count': len(tag_data)},
-                    'write_success': self.write_done
-                })
-            else:
-                for td in tag_data:
-                    wr = "success" if td['write_verified'] else "fail"
-                    body = {"type": "report_rfid", "device_id": self.device_id,
-                            "tid": self._hex_str_to_bytes(td['tid']) if td['tid'] else [],
-                            "epc": self._hex_str_to_bytes(td['epc']) if td['epc'] else [],
-                            "user_data": self._hex_str_to_bytes(td['user_data']) if td['user_data'] else [],
-                            "write_result": wr}
-                    try:
-                        req = urllib.request.Request(f"{API_BASE_URL}/api/report-rfid/",
-                                                     json.dumps(body, ensure_ascii=False).encode('utf-8'),
-                                                     {'Content-Type': 'application/json'}, method='POST')
-                        with urllib.request.urlopen(req, timeout=5) as r:
-                            self.log(f"HTTP上报 OK EPC={td['epc']}", "INFO")
-                    except Exception as e:
-                        self.log(f"HTTP上报失败: {e}", "ERROR")
-            # 完成后将最后标签的TID/EPC填入集成设备信息
-            if self.tag_history:
-                last = self.tag_history[-1]
-                self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
-            self.tag_history.clear()
-            self.write_done = False
-            self.actual_write_data = None
+        if data_type == DATA_TYPE_INBOUND:
+            self.inbound_total += valid_count
+        else:
+            self.outbound_total += valid_count
+        self.root.after(0, lambda: self.total_label.configure(text=str(self.inbound_total + self.outbound_total)))
+        # 完成后将最后标签的TID/EPC填入集成设备信息
+        if self.tag_history:
+            last = self.tag_history[-1]
+            self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
+        self.tag_history.clear()
+        self.write_done = False
+        self.actual_write_data = None
         return True
 
     # ===================================================================
