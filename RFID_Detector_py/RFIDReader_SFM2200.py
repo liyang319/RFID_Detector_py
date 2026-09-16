@@ -517,7 +517,7 @@ class RFIDReader_SFM2200:
         return success
 
     def write_tag_with_epcdata_new(self, epcdata: bytes) -> bool:
-        print('write_tag_with_epcdata_new')
+        print(f"write_tag_with_epcdata_new，数据为: {epcdata.hex()}")
         """
         向 RFID 标签写入 EPC 数据（新指令格式）。
         :param epcdata: 要写入的 EPC 数据，长度必须为 20 字节

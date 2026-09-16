@@ -379,6 +379,16 @@ class MainWindow:
             if label:
                 label.configure(text=text, fg=color)
         self.root.after(0, update)
+
+    def _clear_production_info(self):
+        """清空生产线信息输入框和待写入代码"""
+        def clear():
+            for attr in ['product_type', 'manufacturer_edit', 'license_number', 'type_box',
+                         'weight_box', 'production_date', 'batch_number', 'package_number',
+                         'production_line_code', 'pending_code_edit']:
+                self._set_entry(attr, '')
+        self.root.after(0, clear)
+
     def get_rfid_params(self):
         return {'antenna': self.antenna_edit.get(),
                 'read_power': self.read_power_edit.get(),
@@ -675,7 +685,7 @@ class MainWindow:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                # self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
                                                 print("存在多个货物，请人工处理")
@@ -711,7 +721,7 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                # self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
@@ -722,7 +732,7 @@ class MainWindow:
                                             if current_status == 0x03:  # 光栅1+2同时遮挡，存在多个货物
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                # self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()
                                                 print("存在多个货物，请人工处理")
@@ -758,7 +768,7 @@ class MainWindow:
                                                 # 异常情况
                                                 current_state = STATE_IDLE
                                                 self.direction = 0
-                                                self.rfid_reader_serial.stoploop()
+                                                # self.rfid_reader_serial.stoploop()
                                                 process_start_time = None
                                                 self.tag_history.clear()  # 清空未完成的标签
 
@@ -850,11 +860,12 @@ class MainWindow:
             self.write_in_progress = False
             self.write_result = ""
             self._set_write_result("写入中", "#2196F3")
+            self._clear_production_info()
         else:
             # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
             self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
-            self.rfid_reader_serial.stoploop()
+            # self.rfid_reader_serial.stoploop()
 
     # ===================================================================
     #  RFID数据解析
