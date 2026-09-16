@@ -183,9 +183,9 @@ class MainWindow:
         state_inner.columnconfigure(1, weight=1)
         self.state_var = tk.StringVar(value="cargo_out")
         tk.Radiobutton(state_inner, text="产 品 进 入", variable=self.state_var, value="cargo_in",
-                       font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=0, padx=10)
+                       font=("Microsoft YaHei", 10), bg='white').grid(row=0, column=0, padx=10)
         tk.Radiobutton(state_inner, text="产 品 通 过", variable=self.state_var, value="cargo_out",
-                       font=("Microsoft YaHei", 10), bg='white', state='disabled').grid(row=0, column=1, padx=10)
+                       font=("Microsoft YaHei", 10), bg='white').grid(row=0, column=1, padx=10)
 
         self.production_date.insert(0, datetime.now().strftime("%Y%m%d"))
 
@@ -817,6 +817,7 @@ class MainWindow:
                             process_start_time = None
                             self.tag_history.clear()
                             print("系统已重置：超时保护，不累积识别总量")
+                            self._set_write_result("", "#4CAF50")
                             # 重置确认机制
                             in_confirmation = False
                             confirmed_status = 0
