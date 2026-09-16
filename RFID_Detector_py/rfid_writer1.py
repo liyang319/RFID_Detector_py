@@ -16,10 +16,10 @@ from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-# SERIAL_COM_IO = "/dev/tty.usbserial-14240"
-# SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-SERIAL_COM_IO = "/dev/ttyS0"
-SERIAL_COM_RFID_READER = "/dev/ttysWK3"
+SERIAL_COM_IO = "/dev/tty.usbserial-14240"
+SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+# SERIAL_COM_IO = "/dev/ttyS0"
+# SERIAL_COM_RFID_READER = "/dev/ttysWK3"
 
 ENTRY_WIDTH = 18
 LABEL_WIDTH = 12
@@ -197,8 +197,6 @@ class MainWindow:
 
         rows = [
             ("待写入代码：", 'pending_code_edit'),
-            ("TID：", 'tid_edit'),
-            ("EPC：", 'epc_edit'),
         ]
         for i, (label, attr) in enumerate(rows):
             self._label(frame, label).grid(row=i, column=0, sticky='e', padx=(10, 3), pady=4)
@@ -207,9 +205,8 @@ class MainWindow:
             setattr(self, attr, e)
 
         val_rows = [
+            ("写入结果：", "", 'write_result_label'),
             ("产线运行时间：", "00时00分", 'runtime_label'),
-            ("当前识别数量：", "0", 'current_load_label'),
-            ("识别总量：", "0", 'total_label'),
         ]
         for i, (label, val, attr) in enumerate(val_rows):
             r = i + len(rows)
@@ -310,6 +307,7 @@ class MainWindow:
         self.serial_comm.write_register(self.green_light, False, timeout=0.5)
         self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
         self.serial_comm.write_register(self.red_light, True, timeout=0.5)
+        self._set_write_result("异常", "#F44336")
         # 状态机在后台线程运行，用 root.after 安全地更新界面日志
         self.root.after(0, lambda: self.log("存在多个货物，请人工处理", "ERROR"))
 
@@ -319,6 +317,7 @@ class MainWindow:
         self.serial_comm.write_register(self.green_light, True, timeout=0.5)
         self.serial_comm.write_register(self.yellow_light, False, timeout=0.5)
         self.serial_comm.write_register(self.red_light, False, timeout=0.5)
+        self._set_write_result("", "#4CAF50")
 
     def on_reset_rfid(self):
         """复位异常"""
@@ -372,9 +371,14 @@ class MainWindow:
         self.runtime_label.configure(text=f"{h:02d}时{m:02d}分{s:02d}秒")
         self.root.after(1000, self.update_runtime_display)
 
-    def update_tid(self, text): self._set_entry('tid_edit', text.replace(' ', ''))
-    def update_epc(self, text): self._set_entry('epc_edit', text.replace(' ', ''))
     def update_pending_code(self, text): self._set_entry('pending_code_edit', text.replace(' ', ''))
+
+    def _set_write_result(self, text, color):
+        def update():
+            label = getattr(self, 'write_result_label', None)
+            if label:
+                label.configure(text=text, fg=color)
+        self.root.after(0, update)
     def get_rfid_params(self):
         return {'antenna': self.antenna_edit.get(),
                 'read_power': self.read_power_edit.get(),
@@ -844,6 +848,7 @@ class MainWindow:
             self.write_done = False
             self.write_in_progress = False
             self.write_result = ""
+            self._set_write_result("写入中", "#2196F3")
         else:
             # 入库/出库结束：绿灯亮，停止RFID读取
             self.serial_comm.write_register(self.green_light, True, timeout=0.5)
@@ -1024,10 +1029,6 @@ class MainWindow:
             if len(self.tag_history) > self.max_history_size:
                 self.tag_history.pop(0)
 
-            # 更新当前装载数量
-            self.current_load = len(self.tag_history)
-            self.current_load_label.config(text=str(self.current_load))
-
             # 在取标内容区域追加显示标签信息（可选）
             # display_text = self._format_tag_display(tag)
             # print(display_text)
@@ -1074,6 +1075,7 @@ class MainWindow:
             self.write_done = True
             self.write_in_progress = False
             self.write_result = "success"
+            self._set_write_result("成功", "#4CAF50")
             self.add_message(f"写标签{write_type}成功")
             return True
         else:
@@ -1083,12 +1085,14 @@ class MainWindow:
                 self.write_done = True
                 self.write_in_progress = False
                 self.write_result = "success"
+                self._set_write_result("成功", "#4CAF50")
                 self.add_message(f"重试写标签{write_type}成功")
                 return True
             else:
                 self.write_done = False
                 self.write_in_progress = False
                 self.write_result = "fail"
+                self._set_write_result("失败", "#F44336")
                 self.log(f"写标签{write_type}失败（已重试）", "ERROR")
                 return False
 
@@ -1249,20 +1253,15 @@ class MainWindow:
     #  完成出入库
     # ===================================================================
     def _finalize_tag_report(self, data_type=DATA_TYPE_INBOUND):
-        """完成出入库：更新识别总量、显示最后标签、清空历史"""
-        valid_count = sum(1 for tag in self.tag_history if tag.success)
-        if not valid_count:
-            self.log("没有任何标签")
-            return False
-        if data_type == DATA_TYPE_INBOUND:
-            self.inbound_total += valid_count
-        else:
-            self.outbound_total += valid_count
-        self.root.after(0, lambda: self.total_label.configure(text=str(self.inbound_total + self.outbound_total)))
-        # 完成后将最后标签的TID/EPC填入集成设备信息
-        if self.tag_history:
-            last = self.tag_history[-1]
-            self.root.after(0, lambda: (self.update_tid(last.tid), self.update_epc(last.epc)))
+        """完成出入库：更新识别总量、清空历史"""
+        # valid_count = sum(1 for tag in self.tag_history if tag.success)
+        # if not valid_count:
+        #     self.log("没有任何标签")
+        #     return False
+        # if data_type == DATA_TYPE_INBOUND:
+        #     self.inbound_total += valid_count
+        # else:
+        #     self.outbound_total += valid_count
         self.tag_history.clear()
         self.write_done = False
         self.actual_write_data = None
