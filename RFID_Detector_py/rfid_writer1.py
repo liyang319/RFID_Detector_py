@@ -37,7 +37,7 @@ class MainWindow:
             self._owns_root = False
 
         self.root.title("北斗+RFID系统集成设备(生产端)")
-        self.root.geometry("1000x650")
+        self.root.geometry("1000x550")
         self.root.configure(bg='white')
         self.c = {'bg': 'white', 'fg': '#2c3e50', 'accent': '#4CAF50'}
 
@@ -327,7 +327,7 @@ class MainWindow:
     def _build_debug_group(self, parent):
         frame = self._labelframe(parent, "调试信息")
         frame.pack(fill='x', pady=(0, 10))
-        self.debug_text = tk.Text(frame, font=("Consolas", 9), relief='solid', bd=1, bg='white', wrap='word', highlightthickness=0, height=22)
+        self.debug_text = tk.Text(frame, font=("Consolas", 9), relief='solid', bd=1, bg='white', wrap='word', highlightthickness=0, height=13)
         self.debug_text.pack(fill='both', expand=True, padx=5, pady=5)
         self.debug_text.configure(state='disabled')
         for t in ["ERROR", "WARN", "INFO", "DEBUG"]:
