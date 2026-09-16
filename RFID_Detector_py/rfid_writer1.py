@@ -484,8 +484,9 @@ class MainWindow:
         box_val = int.from_bytes(data[17:19], 'big')
         self._set_editable_entry('package_number', f"{box_val:04d}")
 
-        # 信息代码
-        self._set_editable_entry('production_line_code', data.hex().upper())
+        # 信息代码（铭文）
+        code_str = f"{product_code}{manu_code}{license_num}{spec_val}{pkg_char}{weight_val}{yy:02d}{mm:02d}{dd:02d}{batch_val:04d}{box_val:04d}"
+        self._set_editable_entry('production_line_code', code_str)
 
         self.log(f"产品信息已解析: 产品={product_name}, 企业={manu_name}, 日期=20{yy:02d}-{mm:02d}-{dd:02d}", "INFO")
 
