@@ -16,10 +16,10 @@ from RFIDReader_SFM2200 import RFIDReader_SFM2200
 
 DATA_TYPE_INBOUND = "inbound"
 DATA_TYPE_OUTBOUND = "outbound"
-SERIAL_COM_IO = "/dev/tty.usbserial-14240"
-SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
-# SERIAL_COM_IO = "/dev/ttyS0"
-# SERIAL_COM_RFID_READER = "/dev/ttysWK3"
+# SERIAL_COM_IO = "/dev/tty.usbserial-14240"
+# SERIAL_COM_RFID_READER = "/dev/tty.usbserial-1410"
+SERIAL_COM_IO = "/dev/ttyS0"
+SERIAL_COM_RFID_READER = "/dev/ttysWK3"
 
 ENTRY_WIDTH = 18
 LABEL_WIDTH = 12
@@ -1161,8 +1161,8 @@ class MainWindow:
         """
         收到 TCP 客户端消息时的回调（新）
         支持指令格式:
-          {"type": "write_epc",   "epc": [...]}
-          {"type": "write_user",  "user_data": [...]}
+          {"type": "write_epc",   "epc": "303758...（十六进制字符串）"}
+          {"type": "write_user",  "user_data": "..."}
           {"cmd":  "beidou_info", "id": "...", "time": "...", "location": "..."}
         :param data: 原始字节数据
         :param addr: 客户端地址 (ip, port)
@@ -1190,19 +1190,19 @@ class MainWindow:
         cmd_type = json_data.get("type", "")
 
         if cmd_type == "write_epc":
-            epc_list = json_data.get("epc")
-            if epc_list is None:
+            epc_value = json_data.get("epc")
+            if epc_value is None:
                 self.add_message("write_epc指令缺少 'epc' 字段")
                 return
-            epc_data = bytes(epc_list)
+            epc_data = self._json_to_bytes(epc_value)
             self.on_cmd_write_epc(epc_data)
 
         elif cmd_type == "write_user":
-            user_list = json_data.get("user_data")
-            if user_list is None:
+            user_value = json_data.get("user_data")
+            if user_value is None:
                 self.add_message("write_user指令缺少 'user_data' 字段")
                 return
-            user_data = bytes(user_list)
+            user_data = self._json_to_bytes(user_value)
             self.on_cmd_write_user(user_data)
 
         elif json_data.get("cmd") == "beidou_info":
@@ -1239,6 +1239,17 @@ class MainWindow:
     def _hex_str_to_bytes(hex_str):
         c = hex_str.replace(' ', '')
         return [int(c[i:i + 2], 16) for i in range(0, len(c), 2)]
+
+    @staticmethod
+    def _json_to_bytes(value):
+        """把 json 的 epc/user_data 值转成字节：十六进制字符串逐字节解析，整数数组直接转"""
+        if isinstance(value, str):
+            return bytes.fromhex(value.replace(' ', ''))
+        if isinstance(value, (list, tuple)):
+            if value and isinstance(value[0], str):
+                return bytes.fromhex(''.join(s.replace(' ', '') for s in value))
+            return bytes(value)
+        return b''
 
     def _send_tcp_rfid_data_message(self, tid, epc, user_data, write_result):
         self.tcp_server.send_to_all(json.dumps({
