@@ -74,11 +74,11 @@ class MainWindow:
         # 后端服务
         self.serial_comm = SerialComm(SERIAL_COM_IO, 9600)
         self.serial_reading_active = False
-        # self.rfid_reader_serial = RFIDReader_SFM2200(port=SERIAL_COM_RFID_READER, baudrate=115200, timeout=1.0)
-        self.rfid_reader_serial = RFIDReader_SFM2200(transport='tcp', host='192.168.1.101',
-            tcp_port=8080,
-            timeout=1.0
-        )
+        self.rfid_reader_serial = RFIDReader_SFM2200(port=SERIAL_COM_RFID_READER, baudrate=115200, timeout=1.0)
+        # self.rfid_reader_serial = RFIDReader_SFM2200(transport='tcp', host='192.168.1.101',
+        #     tcp_port=8080,
+        #     timeout=1.0
+        # )
         # ===== 构建UI =====
         self._build_ui()
         self.update_runtime_display()
@@ -419,22 +419,22 @@ class MainWindow:
         business = self._get_business_data()
 
         # 编码规则（0-based，共20字节）：
-        # 0:     0x00 (字对齐填充)
-        # 1-3:   产品种类代码 ASCII (3字节)
-        # 4-5:   生产企业代码 ASCII (2字节)
-        # 6-7:   生产许可证编号 (2字节)
-        # 8:     规格型号-数值
-        # 9:     规格型号-ASCII
-        # 10:    包装方式 ASCII (1字节)
-        # 11-12: 净质量 ASCII (2字节)
-        # 13:    生产日期-年
-        # 14:    生产日期-月
-        # 15:    生产日期-日
-        # 16-17: 生产批号 (2字节)
-        # 18-19: 袋/箱号 (2字节)
+        # 0-2:   产品种类代码 ASCII (3字节)
+        # 3-4:   生产企业代码 ASCII (2字节)
+        # 5-6:   生产许可证编号 (2字节)
+        # 7:     规格型号-数值
+        # 8:     规格型号-ASCII
+        # 9:     包装方式 ASCII (1字节)
+        # 10-11: 净质量 ASCII (2字节)
+        # 12:    生产日期-年
+        # 13:    生产日期-月
+        # 14:    生产日期-日
+        # 15-16: 生产批号 (2字节)
+        # 17-18: 袋/箱号 (2字节)
+        # 19:    0x00 (字对齐填充)
 
-        # 产品种类代码 (bytes 1-3, ASCII) -> 查 business.json products
-        product_code = data[1:4].decode('ascii', errors='replace')
+        # 产品种类代码 (bytes 0-2, ASCII) -> 查 business.json products
+        product_code = data[0:3].decode('ascii', errors='replace')
         product_name = f"未知产品({product_code})"
         for product in business.get('products', []):
             if product.get('code') == product_code:
@@ -442,8 +442,8 @@ class MainWindow:
                 break
         self._set_editable_entry('product_type', product_name)
 
-        # 生产企业代码 (bytes 4-5, ASCII) -> 查 business.json factory
-        manu_code = data[4:6].decode('ascii', errors='replace')
+        # 生产企业代码 (bytes 3-4, ASCII) -> 查 business.json factory
+        manu_code = data[3:5].decode('ascii', errors='replace')
         factory = business.get('factory', {})
         if factory.get('code') == manu_code:
             manu_name = factory.get('name', '未知企业')
@@ -451,37 +451,37 @@ class MainWindow:
             manu_name = '未知企业'
         self._set_editable_entry('manufacturer_edit', manu_name)
 
-        # 生产许可证编号 (bytes 6-7, big-endian)，显示为 MB+数值
-        license_num = int.from_bytes(data[6:8], 'big')
+        # 生产许可证编号 (bytes 5-6, big-endian)，显示为 MB+数值
+        license_num = int.from_bytes(data[5:7], 'big')
         self._set_editable_entry('license_number', f"MB{license_num}")
 
-        # 规格型号 (byte 8 数值 + byte 9 ASCII)，如 0x18,0x4C -> "24L"
-        spec_val = f"{data[8]}{chr(data[9])}"
+        # 规格型号 (byte 7 数值 + byte 8 ASCII)，如 0x18,0x4C -> "24L"
+        spec_val = f"{data[7]}{chr(data[8])}"
         self._set_editable_entry('type_box', spec_val)
 
-        # 包装方式 (byte 10, ASCII): 'D'=袋装，其他('X')=箱装
-        pkg_char = chr(data[10])
+        # 包装方式 (byte 9, ASCII): 'D'=袋装，其他('X')=箱装
+        pkg_char = chr(data[9])
         if pkg_char == 'D':
             self.pkg_var.set("bag")
         else:
             self.pkg_var.set("box")
 
-        # 净质量 (bytes 11-12, ASCII)
-        weight_val = data[11:13].decode('ascii', errors='replace')
+        # 净质量 (bytes 10-11, ASCII)
+        weight_val = data[10:12].decode('ascii', errors='replace')
         self._set_editable_entry('weight_box', weight_val)
 
-        # 生产日期 (bytes 13-15: yy, mm, dd) -> "240803"
-        yy = data[13]
-        mm = data[14]
-        dd = data[15]
+        # 生产日期 (bytes 12-14: yy, mm, dd) -> "240803"
+        yy = data[12]
+        mm = data[13]
+        dd = data[14]
         self._set_editable_entry('production_date', f"{yy:02d}{mm:02d}{dd:02d}")
 
-        # 生产批号 (bytes 16-17, big-endian)
-        batch_val = int.from_bytes(data[16:18], 'big')
+        # 生产批号 (bytes 15-16, big-endian)
+        batch_val = int.from_bytes(data[15:17], 'big')
         self._set_editable_entry('batch_number', f"{batch_val:04d}")
 
-        # 生产袋/箱号 (bytes 18-19, big-endian)
-        box_val = int.from_bytes(data[18:20], 'big')
+        # 生产袋/箱号 (bytes 17-18, big-endian)
+        box_val = int.from_bytes(data[17:19], 'big')
         self._set_editable_entry('package_number', f"{box_val:04d}")
 
         # 信息代码
