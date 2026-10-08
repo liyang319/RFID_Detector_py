@@ -429,8 +429,8 @@ class MainWindow:
         # 12:    生产日期-年
         # 13:    生产日期-月
         # 14:    生产日期-日
-        # 15-16: 生产批号 (2字节)
-        # 17-18: 袋/箱号 (2字节)
+        # 15-16: 生产批号 (前字节百位/千位, 后字节十位/个位)
+        # 17-18: 袋/箱号 (前字节百位/千位, 后字节十位/个位)
         # 19:    0x00 (字对齐填充)
 
         # 产品种类代码 (bytes 0-2, ASCII) -> 查 business.json products
@@ -476,16 +476,16 @@ class MainWindow:
         dd = data[14]
         self._set_editable_entry('production_date', f"{yy:02d}{mm:02d}{dd:02d}")
 
-        # 生产批号 (bytes 15-16, big-endian)
-        batch_val = int.from_bytes(data[15:17], 'big')
-        self._set_editable_entry('batch_number', f"{batch_val:04d}")
+        # 生产批号 (bytes 15-16)：前字节为千位/百位，后字节为十位/个位
+        batch_val = data[15] * 100 + data[16]
+        self._set_editable_entry('batch_number', f"{batch_val}")
 
-        # 生产袋/箱号 (bytes 17-18, big-endian)
-        box_val = int.from_bytes(data[17:19], 'big')
-        self._set_editable_entry('package_number', f"{box_val:04d}")
+        # 生产袋/箱号 (bytes 17-18)：前字节为千位/百位，后字节为十位/个位
+        box_val = data[17] * 100 + data[18]
+        self._set_editable_entry('package_number', f"{box_val}")
 
         # 信息代码（铭文）
-        code_str = f"{product_code}{manu_code}{license_num}{spec_val}{pkg_char}{weight_val}{yy:02d}{mm:02d}{dd:02d}{batch_val:04d}{box_val:04d}"
+        code_str = f"{product_code}{manu_code}{license_num}{spec_val}{pkg_char}{weight_val}{yy:02d}{mm:02d}{dd:02d}{batch_val}{box_val}"
         self._set_editable_entry('production_line_code', code_str)
 
         self.log(f"产品信息已解析: 产品={product_name}, 企业={manu_name}, 日期=20{yy:02d}-{mm:02d}-{dd:02d}", "INFO")
